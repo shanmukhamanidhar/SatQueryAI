@@ -1,0 +1,454 @@
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --deep-space: #03070D;
+    --midnight: #06101A;
+    --deep-navy: #081724;
+    --panel: #0C1C2A;
+    --panel-elevated: #102536;
+
+    --electric-cyan: #42E8D0;
+    --aqua: #55DDE0;
+    --satellite-blue: #4EA7FF;
+    --aurora-blue: #6D8DFF;
+    --aurora-violet: #8B6CFF;
+    --soft-violet: #A477FF;
+
+    --emerald: #35D6A1;
+    --forest: #43C98B;
+    --warning: #FFB454;
+    --critical: #FF5C62;
+
+    --color-space-950: #03070D;
+    --color-space-900: #06101A;
+    --color-space-850: #081724;
+    --color-space-800: #0C1C2A;
+    --color-orbit-cyan: #42E8D0;
+    --color-orbit-emerald: #35D6A1;
+    --color-orbit-amber: #FFB454;
+    --color-orbit-blue: #4EA7FF;
+  }
+
+  body {
+    background-color: #03070D;
+    color: #F1F5F9;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Atmospheric Space Background & Precision Grid */
+.control-room-bg {
+  background-color: #03070D;
+  background-image: 
+    linear-gradient(rgba(66, 232, 208, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(66, 232, 208, 0.02) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Glassmorphism Panel Styles */
+.panel-glass {
+  background: rgba(12, 28, 42, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(66, 232, 208, 0.12);
+  box-shadow: 0 16px 40px -10px rgba(3, 7, 13, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.panel-glass-active {
+  background: rgba(16, 37, 54, 0.92);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(66, 232, 208, 0.4);
+  box-shadow: 0 0 30px -4px rgba(66, 232, 208, 0.25), inset 0 1px 0 0 rgba(66, 232, 208, 0.2);
+}
+
+.panel-elevated {
+  background: rgba(16, 37, 54, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(78, 167, 255, 0.15);
+  box-shadow: 0 20px 48px -12px rgba(3, 7, 13, 0.9);
+}
+
+/* Realistic Moving Satellite Earth Sphere & Spaceborne Optics */
+@keyframes spin-earth {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 1280px 0;
+  }
+}
+
+@keyframes spin-clouds {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 1024px 0;
+  }
+}
+
+@keyframes pulse-halo {
+  0%, 100% {
+    box-shadow: 
+      0 0 50px rgba(66, 232, 208, 0.35),
+      0 0 100px rgba(78, 167, 255, 0.25),
+      0 0 160px rgba(139, 108, 255, 0.15);
+  }
+  50% {
+    box-shadow: 
+      0 0 70px rgba(66, 232, 208, 0.55),
+      0 0 125px rgba(78, 167, 255, 0.38),
+      0 0 190px rgba(139, 108, 255, 0.25);
+  }
+}
+
+@keyframes satellite-orbit-sweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.earth-sphere-realistic {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  animation: pulse-halo 6s ease-in-out infinite;
+  transform: rotate(12deg);
+}
+
+.earth-surface {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-image: 
+    url('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg'),
+    radial-gradient(circle at 40% 40%, #1e3a5f 0%, #0d1b2a 60%, #03070d 100%);
+  background-size: 1280px 100%;
+  background-repeat: repeat-x;
+  animation: spin-earth 60s linear infinite;
+}
+
+.earth-clouds {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-image: url('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_clouds_1024.png');
+  background-size: 1024px 100%;
+  background-repeat: repeat-x;
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  animation: spin-clouds 42s linear infinite;
+  pointer-events: none;
+}
+
+.earth-atmosphere-shadow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: 
+    radial-gradient(circle at 35% 30%, transparent 40%, rgba(3, 7, 13, 0.65) 65%, rgba(3, 7, 13, 0.95) 85%, #03070d 100%),
+    linear-gradient(to bottom right, rgba(255, 255, 255, 0.12) 0%, transparent 40%, rgba(3, 7, 13, 0.92) 80%);
+  box-shadow: 
+    inset 16px 16px 36px rgba(255, 255, 255, 0.18),
+    inset -30px -30px 60px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+
+.earth-rim-glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 2px solid rgba(66, 232, 208, 0.4);
+  box-shadow: 
+    0 0 30px rgba(66, 232, 208, 0.45),
+    inset 0 0 25px rgba(66, 232, 208, 0.35);
+  pointer-events: none;
+}
+
+/* Editorial Satellite Card Architecture */
+.figma-card, .satellite-card {
+  background: rgba(12, 28, 42, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.figma-card:hover, .satellite-card:hover {
+  border-color: rgba(66, 232, 208, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px -8px rgba(3, 7, 13, 0.7), 0 0 20px -2px rgba(66, 232, 208, 0.18);
+}
+
+/* Gradient Text Styles */
+.text-gradient-cyan {
+  background: linear-gradient(135deg, #42E8D0 0%, #4EA7FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-hero {
+  background: linear-gradient(135deg, #FFFFFF 20%, #42E8D0 65%, #4EA7FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-blue-violet {
+  background: linear-gradient(135deg, #4EA7FF 0%, #8B6CFF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-emerald {
+  background: linear-gradient(135deg, #35D6A1 0%, #42E8D0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Telemetry & Code Typography */
+.font-telemetry {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.font-orbital {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.06em;
+}
+
+/* MapLibre Map Container Overrides */
+.maplibregl-map {
+  font-family: inherit;
+}
+
+.maplibregl-ctrl-group {
+  background: rgba(12, 18, 30, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 10px !important;
+  backdrop-filter: blur(12px) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group button {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.maplibregl-ctrl-group button:last-child {
+  border-bottom: none !important;
+}
+
+.maplibregl-ctrl-icon {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+/* Custom Telemetry Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(7, 11, 19, 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.4);
+}
+
+/* SatQueryAI On-Map Indicator Pins & Tooltips */
+.satquery-map-indicator,
+.earthscope-map-indicator {
+  position: relative;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  cursor: pointer;
+  z-index: 15;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), z-index 0.2s;
+}
+
+.satquery-map-indicator:hover,
+.satquery-map-indicator.active,
+.earthscope-map-indicator:hover,
+.earthscope-map-indicator.active {
+  transform: scale(1.18);
+  z-index: 50;
+}
+
+.indicator-pin-outer {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.indicator-core-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--indicator-color, #00f0ff);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 16px var(--indicator-color, #00f0ff), 0 4px 12px rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #050811;
+  font-family: 'JetBrains Mono', monospace;
+  position: relative;
+  z-index: 2;
+  transition: all 0.2s ease;
+}
+
+.indicator-ping-ring {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: var(--indicator-color, #00f0ff);
+  opacity: 0.65;
+  animation: ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.indicator-label-chip {
+  margin-left: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: rgba(10, 15, 26, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  pointer-events: auto;
+  transition: all 0.2s ease;
+}
+
+.indicator-chip-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: 0.02em;
+}
+
+.indicator-chip-area {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--indicator-color, #00f0ff);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.earthscope-map-indicator:hover .indicator-label-chip {
+  border-color: var(--indicator-color, #00f0ff);
+  box-shadow: 0 0 16px var(--indicator-glow, rgba(0, 240, 255, 0.4));
+}
+
+/* MapLibre Popup Overrides */
+.maplibregl-popup-content {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 12px !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: rgba(12, 18, 30, 0.95) !important;
+}
+
+.maplibregl-popup-close-button {
+  color: #94a3b8 !important;
+  font-size: 16px !important;
+  padding: 4px 8px !important;
+  right: 4px !important;
+  top: 4px !important;
+}
+.maplibregl-popup-close-button:hover {
+  color: #00f0ff !important;
+  background: transparent !important;
+}
+
+/* Area Representation Badges & Specific Place Labels */
+.satquery-area-badge,
+.earthscope-area-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: rgba(9, 14, 23, 0.95);
+  border: 1.5px solid #00f0ff;
+  box-shadow: 0 4px 20px rgba(0, 240, 255, 0.35), 0 8px 32px rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  pointer-events: auto;
+  user-select: none;
+  cursor: default;
+  transition: all 0.2s ease;
+  z-index: 25;
+}
+
+.satquery-area-badge:hover,
+.earthscope-area-badge:hover {
+  transform: scale(1.04);
+  box-shadow: 0 6px 24px rgba(0, 240, 255, 0.55), 0 10px 40px rgba(0, 0, 0, 0.9);
+}
+
+.satquery-place-badge,
+.earthscope-zone-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(7, 11, 20, 0.95);
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 240, 255, 0.2);
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  pointer-events: auto;
+  user-select: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 20;
+}
+
+.satquery-place-badge:hover,
+.earthscope-zone-label:hover {
+  transform: translateY(-2px) scale(1.06);
+  border-color: #00f0ff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.9), 0 0 18px rgba(0, 240, 255, 0.45);
+}
+
+.earthscope-zone-label:hover {
+  transform: scale(1.06);
+  box-shadow: 0 4px 16px var(--zone-color, #00f0ff);
+}
