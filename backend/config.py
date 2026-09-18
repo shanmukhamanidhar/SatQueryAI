@@ -63,11 +63,20 @@ class Settings:
     USER_AGENT: str = "SatQueryAI-Autonomous-Earth-Intelligence/1.0 (contact: research@satquery.ai)"
     
     # Storage & Cache Directories
-    CACHE_DIR: Path = BASE_DIR / "backend" / "cache"
-    REPORTS_DIR: Path = BASE_DIR / "backend" / "reports"
-    
-    # Max image dimensions for raster processing (balanced for fast, accurate response)
-    DEFAULT_RASTER_RESOLUTION: int = 256  # 256x256 pixel grid for AOI analysis
+    # Vercel's deployed filesystem is read-only, so use /tmp there.
+    # Locally, keep using the project's backend directories.
+    CACHE_DIR: Path = (
+        Path("/tmp") / "satqueryai" / "cache"
+        if os.getenv("VERCEL")
+        else BASE_DIR / "backend" / "cache"
+    )
+    REPORTS_DIR: Path = (
+        Path("/tmp") / "satqueryai" / "reports"
+        if os.getenv("VERCEL")
+        else BASE_DIR / "backend" / "reports"
+    )
+    DEFAULT_RASTER_RESOLUTION: int = 256
+
 
 settings = Settings()
 
