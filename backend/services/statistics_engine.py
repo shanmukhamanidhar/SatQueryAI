@@ -2,8 +2,8 @@ import logging
 from typing import Dict, Any, List, Tuple
 import numpy as np
 
-from ..models.schemas import LandCoverStats, TransitionRecord
-from .raster_engine import (
+from models.schemas import LandCoverStats, TransitionRecord
+from services.raster_engine import (
     CLASS_WATER,
     CLASS_TREES,
     CLASS_CROPS,

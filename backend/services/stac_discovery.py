@@ -2,7 +2,7 @@ import logging
 from typing import List, Dict, Any, Optional, Tuple
 import httpx
 from datetime import datetime
-from ..config import settings
+from config import settings
 
 logger = logging.getLogger(__name__)
 

@@ -10,8 +10,8 @@ from scipy import ndimage
 from shapely.geometry import Polygon, MultiPolygon, mapping
 from shapely.ops import unary_union
 
-from ..config import settings
-from ..models.schemas import (
+from config import settings
+from models.schemas import (
     ChangeRegion,
     LandCoverStats,
     TransitionRecord,

@@ -15,8 +15,8 @@ from fastapi.staticfiles import StaticFiles
 import base64
 from PIL import Image
 
-from .config import settings
-from .models.schemas import (
+from config import settings
+from models.schemas import (
     AnalyzeRequest,
     AnalysisContext,
     LocationInfo,
@@ -28,10 +28,10 @@ from .models.schemas import (
     YearImageRequest,
     YearImageResponse
 )
-from .services.nlp_parser import parse_nlp_intent
-from .services.geocoding import resolve_location, bbox_to_geojson_polygon
-from .services.stac_discovery import select_best_pair_observations, search_stac_for_aoi
-from .services.raster_engine import (
+from services.nlp_parser import parse_nlp_intent
+from services.geocoding import resolve_location, bbox_to_geojson_polygon
+from services.stac_discovery import select_best_pair_observations, search_stac_for_aoi
+from services.raster_engine import (
     calculate_aoi_hectares,
     fetch_raster_bands_for_scene,
     compute_spectral_indices,
@@ -40,11 +40,11 @@ from .services.raster_engine import (
     extract_change_polygons,
     pil_to_base64_data_url
 )
-from .services.statistics_engine import compute_land_cover_statistics
-from .services.confidence_engine import evaluate_analysis_confidence
-from .services.gemini_analyst import generate_ai_analysis, answer_conversational_query
-from .services.timeline_engine import generate_multi_year_timeline
-from .services.report_generator import generate_pdf_report
+from services.statistics_engine import compute_land_cover_statistics
+from services.confidence_engine import evaluate_analysis_confidence
+from services.gemini_analyst import generate_ai_analysis, answer_conversational_query
+from services.timeline_engine import generate_multi_year_timeline
+from services.report_generator import generate_pdf_report
 
 # Configure structured logging
 logging.basicConfig(

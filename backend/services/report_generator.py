@@ -16,7 +16,7 @@ from reportlab.platypus import (
     KeepTogether,
     HRFlowable
 )
-from ..config import settings
+from config import settings
 
 def generate_pdf_report(analysis: Dict[str, Any]) -> bytes:
     """

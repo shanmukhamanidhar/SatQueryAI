@@ -1,8 +1,8 @@
 import json
 import logging
 from typing import Dict, Any, List, Optional
-from ..config import settings
-from ..models.schemas import AISummary, ChatResponse
+from config import settings
+from models.schemas import AISummary, ChatResponse
 
 logger = logging.getLogger(__name__)
 

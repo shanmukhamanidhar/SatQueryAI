@@ -3,8 +3,8 @@ import logging
 import math
 from typing import Optional, Dict, Any, List, Tuple
 import httpx
-from ..config import settings
-from ..models.schemas import LocationInfo, PlaceLandmark
+from config import settings
+from models.schemas import LocationInfo, PlaceLandmark
 
 logger = logging.getLogger(__name__)
 

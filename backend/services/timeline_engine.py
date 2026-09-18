@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict, Any
-from ..models.schemas import TimelinePoint
+from models.schemas import TimelinePoint
 
 logger = logging.getLogger(__name__)
 

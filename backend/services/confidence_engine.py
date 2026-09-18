@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any, List
-from ..models.schemas import ConfidenceBreakdown
+from models.schemas import ConfidenceBreakdown
 
 logger = logging.getLogger(__name__)
 
