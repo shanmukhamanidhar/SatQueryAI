@@ -6,6 +6,7 @@ export interface PlaceLandmark {
 }
 
 export interface LocationInfo {
+  id?: string;
   name: string;
   display_name: string;
   latitude: number;
@@ -21,6 +22,8 @@ export interface LocationInfo {
 
 export interface ChangeRegion {
   id: string;
+  location_id?: string;
+  location_name?: string;
   indicator_number?: number;
   category: string;
   user_label: string;
@@ -31,6 +34,7 @@ export interface ChangeRegion {
   delta_ndbi: number;
   delta_ndwi: number;
   confidence_pct: number;
+  severity_level?: 'high' | 'medium' | 'low' | 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' | string;
   simple_explanation: string;
   technical_evidence: string;
   geometry: any;
@@ -141,6 +145,32 @@ export interface AnalysisContext {
   timeline: TimelinePoint[];
   confidence: ConfidenceBreakdown;
   ai_summary: AISummary;
+  query_understanding?: QueryUnderstanding;
+}
+
+export interface QueryUnderstanding {
+  is_earth_observation: boolean;
+  rejection_reason?: string | null;
+  is_ambiguous: boolean;
+  clarification_question?: string | null;
+  disambiguation_options?: string[];
+  location?: string | null;
+  target_type?: string | null;
+  start_year: number;
+  end_year: number;
+  focus_indicator: string;
+  analysis_type: string;
+  user_intent: string;
+  defaulted_dates: boolean;
+  year_warning?: string | null;
+  query_text: string;
+  data_used?: {
+    satellite_imagery?: string;
+    period?: string;
+    aoi?: string;
+    indicators?: string;
+    change_detection?: string;
+  };
 }
 
 export interface ChatMessage {

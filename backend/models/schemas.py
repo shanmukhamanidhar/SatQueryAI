@@ -8,6 +8,7 @@ class PlaceLandmark(BaseModel):
     category: Optional[str] = "landmark" # "landmark" | "suburb" | "district" | "waterbody"
 
 class LocationInfo(BaseModel):
+    id: Optional[str] = None
     name: str
     display_name: str
     latitude: float
@@ -22,19 +23,22 @@ class LocationInfo(BaseModel):
 
 class ChangeRegion(BaseModel):
     id: str
-    indicator_number: Optional[int] = None # 1-based rank (Hotspot #1, #2, etc.)
-    category: str              # 'Urban development', 'Vegetation loss', 'Vegetation gain', 'Water reduction', etc.
-    user_label: str            # 'Built-up / Development', 'Vegetation Loss', etc.
-    color: str                 # Hex code (#f97316, #22c55e, #ef4444, #0ea5e9)
+    location_id: Optional[str] = None          # Explicit parent location id (e.g. 'delhi', 'andaman_and_nicobar_islands')
+    location_name: Optional[str] = None        # Explicit parent location name (e.g. 'Delhi (NCT)')
+    indicator_number: Optional[int] = None     # 1-based rank (Hotspot #1, #2, etc.)
+    severity_level: Optional[str] = None       # 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW'
+    category: str                              # 'Urban development', 'Vegetation loss', 'Vegetation gain', 'Water reduction', etc.
+    user_label: str                            # 'Built-up / Development', 'Vegetation Loss', etc.
+    color: str                                 # Hex code (#f97316, #22c55e, #ef4444, #0ea5e9)
     area_hectares: float
-    centroid: List[float]      # [longitude, latitude]
+    centroid: List[float]                      # [longitude, latitude]
     delta_ndvi: float
     delta_ndbi: float
     delta_ndwi: float
     confidence_pct: int
     simple_explanation: str
     technical_evidence: str
-    geometry: Dict[str, Any]   # GeoJSON polygon geometry
+    geometry: Dict[str, Any]                   # GeoJSON polygon geometry
 
 class LandCoverStats(BaseModel):
     category: str
@@ -128,6 +132,7 @@ class AnalysisContext(BaseModel):
     # Confidence & AI
     confidence: ConfidenceBreakdown
     ai_summary: AISummary
+    query_understanding: Optional[Dict[str, Any]] = None
 
 # API Request Models
 class AnalyzeRequest(BaseModel):
@@ -137,11 +142,37 @@ class AnalyzeRequest(BaseModel):
     end_date: Optional[str] = None
     aoi_geojson: Optional[Dict[str, Any]] = None
     focus_indicator: Optional[str] = None
+    previous_location: Optional[str] = None
+    previous_start_year: Optional[int] = None
+    previous_end_year: Optional[int] = None
+
+class QueryParseRequest(BaseModel):
+    query: str
+    previous_context: Optional[Dict[str, Any]] = None
+
+class QueryParseResponse(BaseModel):
+    is_earth_observation: bool
+    rejection_reason: Optional[str] = None
+    is_ambiguous: bool = False
+    clarification_question: Optional[str] = None
+    disambiguation_options: List[str] = []
+    location: Optional[str] = None
+    target_type: Optional[str] = None
+    start_year: int = 2021
+    end_year: int = 2026
+    focus_indicator: str = "all"
+    analysis_type: str = "multi_year_change"
+    user_intent: str = "compare"
+    defaulted_dates: bool = False
+    year_warning: Optional[str] = None
+    query_text: str = ""
+    data_used: Dict[str, Any] = {}
 
 class ChatRequest(BaseModel):
     analysis_id: str
     message: str
     history: Optional[List[Dict[str, str]]] = Field(default_factory=list)
+    language: Optional[str] = "en"
 
 class ChatResponse(BaseModel):
     reply: str

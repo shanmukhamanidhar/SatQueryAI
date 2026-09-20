@@ -10,7 +10,11 @@ import {
   Sparkles, 
   AlertCircle,
   HelpCircle,
-  Square, 
+  Square,
+  Circle,
+  Pencil,
+  Shapes,
+  X,
   Flame, 
   Info, 
   Plus, 
@@ -30,7 +34,7 @@ import {
 } from 'lucide-react';
 import { AnalysisContext, ChangeRegion } from '../lib/types';
 import { AVAILABLE_LOCATIONS, AvailableLocation } from '../lib/availableLocations';
-import { getCategoryColor, getCategoryConfig, resolveCategoryKey } from '../lib/colorSystem';
+import { calculateHotspotSeverity, getCategoryColor, getCategoryConfig, resolveCategoryKey, CATEGORY_COLOR_SYSTEM } from '../lib/colorSystem';
 
 interface MapViewerProps {
   context: AnalysisContext | null;
@@ -47,6 +51,8 @@ interface MapViewerProps {
   toImageData?: { year: number; date: string; imageUrl: string } | null;
   isLoadingFromYear?: boolean;
   isLoadingToYear?: boolean;
+  onSelectFromYear?: (frame: any) => void;
+  onSelectToYear?: (frame: any) => void;
   onResetYears?: () => void;
   isMapMaximized?: boolean;
   onToggleMaximizeMap?: () => void;
@@ -56,6 +62,7 @@ interface MapViewerProps {
   theme?: 'light' | 'dark';
   onSelectLocation?: (query: string) => void;
   isAnalyzing?: boolean;
+  onAnalyzeCustomAoi?: (geometry: any, areaHa: number) => void;
 }
 
 export const MapViewer: React.FC<MapViewerProps> = ({
@@ -73,6 +80,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   toImageData,
   isLoadingFromYear,
   isLoadingToYear,
+  onSelectFromYear,
+  onSelectToYear,
   onResetYears,
   isMapMaximized,
   onToggleMaximizeMap,
@@ -82,9 +91,24 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   theme,
   onSelectLocation,
   isAnalyzing,
+  onAnalyzeCustomAoi,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+
+  // Interactive Custom AOI Drawing Tool ('none' | 'rectangle' | 'polygon' | 'circle')
+  const [drawMode, setDrawMode] = useState<'none' | 'rectangle' | 'polygon' | 'circle'>('none');
+  const [drawMenuOpen, setDrawMenuOpen] = useState<boolean>(false);
+  const [drawnCoordinates, setDrawnCoordinates] = useState<[number, number][]>([]);
+  const [customAoiHectares, setCustomAoiHectares] = useState<number>(0);
+  const [isDrawing, setIsDrawing] = useState<boolean>(false);
+  const [polyVertices, setPolyVertices] = useState<[number, number][]>([]);
+  const polyVerticesRef = useRef<[number, number][]>([]);
+  polyVerticesRef.current = polyVertices;
+  const [isTimePopoverOpen, setIsTimePopoverOpen] = useState<boolean>(false);
+  const drawingStartRef = useRef<[number, number] | null>(null);
+  const drawModeRef = useRef<'none' | 'rectangle' | 'polygon' | 'circle'>('none');
+  drawModeRef.current = drawMode;
 
   // Layer toggles (indicators optional: default closed)
   const [showHeatmap, setShowHeatmap] = useState(true);
@@ -179,9 +203,20 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
 
   // Organize and de-clutter indicators: smart spatial de-duplication to prevent overlapping markers
   const placedIndicators = useMemo(() => {
-    if (!context?.change_regions) return [];
+    if (!context?.change_regions || !context.location?.bounding_box) return [];
+    const [w, s, e, n] = context.location.bounding_box;
+    const pad = 0.08;
+
     const filtered = context.change_regions
-      .filter((r) => matchesCategory(r.category, filteredCategory))
+      .filter((r) => {
+        if (!matchesCategory(r.category, filteredCategory)) return false;
+        // Verify hotspot centroid is strictly within active location bounding box
+        const [lon, lat] = r.centroid;
+        if (lon < w - pad || lon > e + pad || lat < s - pad || lat > n + pad) return false;
+        // Verify location_id if present
+        if (r.location_id && context.location.id && r.location_id !== context.location.id) return false;
+        return true;
+      })
       .sort((a, b) => b.area_hectares - a.area_hectares);
 
     const minDistanceDegrees = 0.012; // ~1.3 km minimum distance between pins to prevent crowding
@@ -426,7 +461,13 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             id: r.id,
             category: r.category,
             user_label: r.user_label,
-            color: getCategoryColor(r.category),
+            color: (
+              r.category.toLowerCase().includes('gain') || 
+              r.user_label.toLowerCase().includes('regrowth') || 
+              r.user_label.toLowerCase().includes('growth') || 
+              (r.category.toLowerCase().includes('veg') && !r.category.toLowerCase().includes('loss') && !r.category.toLowerCase().includes('deforest')) ||
+              r.delta_ndvi > 0.05
+            ) ? '#10b981' : getCategoryColor(r.category),
             area_ha: r.area_hectares,
             delta_ndvi: r.delta_ndvi,
             delta_ndbi: r.delta_ndbi,
@@ -482,6 +523,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
 
         // Click Polygon Handler
         map.on('click', 'change-polygons-fill', (e) => {
+          if (drawModeRef.current !== 'none') return;
           if (!e.features || e.features.length === 0) return;
           const clickedId = e.features[0].properties.id;
           const match = context.change_regions.find((r) => r.id === clickedId);
@@ -522,6 +564,40 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         });
       }
 
+      // Custom Drawn AOI Layers
+      if (!map.getSource('custom-aoi-source')) {
+        map.addSource('custom-aoi-source', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: [],
+          },
+        });
+      }
+      if (!map.getLayer('custom-aoi-fill')) {
+        map.addLayer({
+          id: 'custom-aoi-fill',
+          type: 'fill',
+          source: 'custom-aoi-source',
+          paint: {
+            'fill-color': '#3b82f6',
+            'fill-opacity': 0.22,
+          },
+        });
+      }
+      if (!map.getLayer('custom-aoi-line')) {
+        map.addLayer({
+          id: 'custom-aoi-line',
+          type: 'line',
+          source: 'custom-aoi-source',
+          paint: {
+            'line-color': '#2563eb',
+            'line-width': 2.5,
+            'line-dasharray': [3, 2],
+          },
+        });
+      }
+
       // Guarantee labels and vector layers always render above raster imagery
       if (map.getLayer('carto-labels-layer')) {
         map.moveLayer('carto-labels-layer');
@@ -530,6 +606,8 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
       if (map.getLayer('change-polygons-fill')) map.moveLayer('change-polygons-fill');
       if (map.getLayer('change-polygons-line')) map.moveLayer('change-polygons-line');
       if (map.getLayer('aoi-boundary-line')) map.moveLayer('aoi-boundary-line');
+      if (map.getLayer('custom-aoi-fill')) map.moveLayer('custom-aoi-fill');
+      if (map.getLayer('custom-aoi-line')) map.moveLayer('custom-aoi-line');
     };
 
     if (map.isStyleLoaded()) {
@@ -538,6 +616,260 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
       map.once('styledata', updateLayers);
     }
   }, [context, filteredCategory, highlightedRegionIds, fromImageData, toImageData]);
+
+  // Resize MapLibre GL smoothly whenever layout or maximize state changes
+  useEffect(() => {
+    if (mapRef.current) {
+      const t1 = setTimeout(() => mapRef.current?.resize(), 50);
+      const t2 = setTimeout(() => mapRef.current?.resize(), 150);
+      const t3 = setTimeout(() => mapRef.current?.resize(), 300);
+      const t4 = setTimeout(() => mapRef.current?.resize(), 500);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(t4);
+      };
+    }
+  }, [isMapMaximized]);
+
+  // Spherical Geodesic Hectare & Coordinate Generators
+  function calculatePolygonAreaHectares(coords: [number, number][]): number {
+    if (!coords || coords.length < 3) return 0;
+    const RADIUS = 6378137;
+    let area = 0;
+    const len = coords.length;
+    for (let i = 0; i < len; i++) {
+      const p1 = coords[i];
+      const p2 = coords[(i + 1) % len];
+      const radX1 = (p1[0] * Math.PI) / 180;
+      const radY1 = (p1[1] * Math.PI) / 180;
+      const radX2 = (p2[0] * Math.PI) / 180;
+      const radY2 = (p2[1] * Math.PI) / 180;
+      area += (radX2 - radX1) * (2 + Math.sin(radY1) + Math.sin(radY2));
+    }
+    area = Math.abs((area * RADIUS * RADIUS) / 2.0);
+    return Math.max(0.1, Number((area / 10000).toFixed(1)));
+  }
+
+  function generateRectangleCoordinates(p1: [number, number], p2: [number, number]): [number, number][] {
+    const minX = Math.min(p1[0], p2[0]);
+    const maxX = Math.max(p1[0], p2[0]);
+    const minY = Math.min(p1[1], p2[1]);
+    const maxY = Math.max(p1[1], p2[1]);
+    return [
+      [minX, minY],
+      [maxX, minY],
+      [maxX, maxY],
+      [minX, maxY],
+      [minX, minY]
+    ];
+  }
+
+  function generateCircleCoordinates(center: [number, number], edgePoint: [number, number], points: number = 36): [number, number][] {
+    const [clon, clat] = center;
+    const [elon, elat] = edgePoint;
+    const dLat = ((elat - clat) * Math.PI) / 180;
+    const dLon = ((elon - clon) * Math.PI) / 180;
+    const lat1 = (clat * Math.PI) / 180;
+    const lat2 = (elat * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const radiusMeters = Math.max(50, 6378137 * c);
+
+    const coords: [number, number][] = [];
+    const latRadius = (radiusMeters / 6378137) * (180 / Math.PI);
+    const lonRadius = latRadius / Math.cos((clat * Math.PI) / 180);
+
+    for (let i = 0; i <= points; i++) {
+      const angle = (i * 2 * Math.PI) / points;
+      const lon = clon + lonRadius * Math.cos(angle);
+      const lat = clat + latRadius * Math.sin(angle);
+      coords.push([Number(lon.toFixed(6)), Number(lat.toFixed(6))]);
+    }
+    return coords;
+  }
+
+  // Handle Map Drawing Events (Rectangle, Circle, Polygon)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (drawMode === 'none') {
+      map.getCanvas().style.cursor = '';
+      map.doubleClickZoom.enable();
+      return;
+    }
+
+    map.getCanvas().style.cursor = 'crosshair';
+    map.doubleClickZoom.disable();
+
+    const updateLayerData = (coords: [number, number][]) => {
+      if (!map.getSource('custom-aoi-source')) return;
+      const src = map.getSource('custom-aoi-source') as maplibregl.GeoJSONSource;
+      if (coords.length >= 3) {
+        src.setData({
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [coords],
+          },
+          properties: {},
+        });
+      } else {
+        src.setData({
+          type: 'FeatureCollection',
+          features: [],
+        });
+      }
+    };
+
+    const handleClick = (e: maplibregl.MapMouseEvent) => {
+      const pt: [number, number] = [Number(e.lngLat.lng.toFixed(6)), Number(e.lngLat.lat.toFixed(6))];
+
+      if (drawModeRef.current === 'rectangle') {
+        if (!drawingStartRef.current) {
+          drawingStartRef.current = pt;
+          setIsDrawing(true);
+        } else {
+          const rect = generateRectangleCoordinates(drawingStartRef.current, pt);
+          setDrawnCoordinates(rect);
+          setCustomAoiHectares(calculatePolygonAreaHectares(rect));
+          updateLayerData(rect);
+          drawingStartRef.current = null;
+          setIsDrawing(false);
+          setDrawMode('none');
+          setDrawMenuOpen(false);
+        }
+      } else if (drawModeRef.current === 'circle') {
+        if (!drawingStartRef.current) {
+          drawingStartRef.current = pt;
+          setIsDrawing(true);
+        } else {
+          const circ = generateCircleCoordinates(drawingStartRef.current, pt);
+          setDrawnCoordinates(circ);
+          setCustomAoiHectares(calculatePolygonAreaHectares(circ));
+          updateLayerData(circ);
+          drawingStartRef.current = null;
+          setIsDrawing(false);
+          setDrawMode('none');
+          setDrawMenuOpen(false);
+        }
+      } else if (drawModeRef.current === 'polygon') {
+        const next = [...polyVerticesRef.current, pt];
+        polyVerticesRef.current = next;
+        setPolyVertices(next);
+        if (next.length >= 3) {
+          const closed = [...next, next[0]];
+          updateLayerData(closed);
+          setCustomAoiHectares(calculatePolygonAreaHectares(closed));
+        }
+      }
+    };
+
+    const handleMouseMove = (e: maplibregl.MapMouseEvent) => {
+      const pt: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      if (drawModeRef.current === 'rectangle' && drawingStartRef.current) {
+        const rect = generateRectangleCoordinates(drawingStartRef.current, pt);
+        updateLayerData(rect);
+        setCustomAoiHectares(calculatePolygonAreaHectares(rect));
+      } else if (drawModeRef.current === 'circle' && drawingStartRef.current) {
+        const circ = generateCircleCoordinates(drawingStartRef.current, pt);
+        updateLayerData(circ);
+        setCustomAoiHectares(calculatePolygonAreaHectares(circ));
+      } else if (drawModeRef.current === 'polygon' && polyVerticesRef.current.length > 0) {
+        const preview = [...polyVerticesRef.current, pt, polyVerticesRef.current[0]];
+        updateLayerData(preview);
+      }
+    };
+
+    const handleDblClick = (e: maplibregl.MapMouseEvent) => {
+      e.preventDefault();
+      if (drawModeRef.current === 'polygon' && polyVerticesRef.current.length >= 3) {
+        const pts = [...polyVerticesRef.current];
+        if (pts.length > 3) {
+          pts.pop(); // Remove duplicate point created right before dblclick
+        }
+        const closed = [...pts, pts[0]];
+        setDrawnCoordinates(closed);
+        setCustomAoiHectares(calculatePolygonAreaHectares(closed));
+        updateLayerData(closed);
+        polyVerticesRef.current = [];
+        setPolyVertices([]);
+        setDrawMode('none');
+        setDrawMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleCancelDrawing();
+      }
+    };
+
+    map.on('click', handleClick);
+    map.on('mousemove', handleMouseMove);
+    map.on('dblclick', handleDblClick);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      map.off('click', handleClick);
+      map.off('mousemove', handleMouseMove);
+      map.off('dblclick', handleDblClick);
+      window.removeEventListener('keydown', handleKeyDown);
+      map.getCanvas().style.cursor = '';
+      map.doubleClickZoom.enable();
+    };
+  }, [drawMode]);
+
+  const handleFinishPolygon = () => {
+    const pts = polyVerticesRef.current.length >= 3 ? polyVerticesRef.current : polyVertices;
+    if (pts.length >= 3) {
+      const closed = [...pts, pts[0]];
+      setDrawnCoordinates(closed);
+      setCustomAoiHectares(calculatePolygonAreaHectares(closed));
+      polyVerticesRef.current = [];
+      setPolyVertices([]);
+      setDrawMode('none');
+      setDrawMenuOpen(false);
+    }
+  };
+
+  const handleClearDrawnAoi = () => {
+    setDrawnCoordinates([]);
+    setCustomAoiHectares(0);
+    drawingStartRef.current = null;
+    polyVerticesRef.current = [];
+    setPolyVertices([]);
+    setIsDrawing(false);
+    const map = mapRef.current;
+    if (map && map.getSource('custom-aoi-source')) {
+      (map.getSource('custom-aoi-source') as maplibregl.GeoJSONSource).setData({
+        type: 'FeatureCollection',
+        features: [],
+      });
+    }
+  };
+
+  const handleCancelDrawing = () => {
+    handleClearDrawnAoi();
+    setDrawMode('none');
+    setDrawMenuOpen(false);
+    if (mapRef.current) {
+      mapRef.current.doubleClickZoom.enable();
+      mapRef.current.getCanvas().style.cursor = '';
+    }
+  };
+
+  const handleAnalyzeDrawnAoi = () => {
+    if (drawnCoordinates.length >= 3 && onAnalyzeCustomAoi) {
+      const geojson = {
+        type: 'Polygon',
+        coordinates: [drawnCoordinates],
+      };
+      onAnalyzeCustomAoi(geojson, customAoiHectares);
+    }
+  };
 
   // Manage on-map indicator markers & click popups (Clean, Aligned, Organized)
   useEffect(() => {
@@ -557,12 +889,31 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
     placedIndicators.forEach((region, idx) => {
       const isSelected = selectedRegion?.id === region.id;
       const isHighlighted = highlightedRegionIds ? highlightedRegionIds.includes(region.id) : false;
-      const config = getCategoryConfig(region.category);
+      const catLow = region.category.toLowerCase();
+      const labelLow = region.user_label.toLowerCase();
+      const isVeg = (
+        catLow.includes('gain') || 
+        labelLow.includes('regrowth') || 
+        labelLow.includes('growth') || 
+        labelLow.includes('crop') || 
+        labelLow.includes('green') || 
+        (catLow.includes('veg') && !catLow.includes('loss') && !catLow.includes('deforest')) ||
+        region.delta_ndvi > 0.04
+      );
+      const isDeforest = (
+        catLow.includes('deforest') ||
+        catLow.includes('loss') ||
+        labelLow.includes('loss') ||
+        region.delta_ndvi < -0.08
+      );
+      const config = isVeg 
+        ? CATEGORY_COLOR_SYSTEM.vegetation 
+        : (isDeforest ? CATEGORY_COLOR_SYSTEM.deforestation : getCategoryConfig(region.category));
       const canonicalColor = config.color;
 
       // Create indicator DOM container
       const el = document.createElement('div');
-      el.className = `satquery-map-indicator ${isSelected || isHighlighted ? 'active' : ''}`;
+      el.className = `satquery-map-indicator ${isSelected || isHighlighted ? 'active' : ''} ${drawMode !== 'none' ? 'pointer-events-none opacity-40' : ''}`;
       el.style.setProperty('--indicator-color', canonicalColor);
       el.style.setProperty('--indicator-glow', `${canonicalColor}77`);
 
@@ -570,18 +921,21 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         ? `${region.area_hectares.toFixed(1)} ha` 
         : `${Math.round(region.area_hectares).toLocaleString()} ha`;
 
-      // Clean, organized color-based indicator capsule with index rank and category
+      const severity = calculateHotspotSeverity(region.area_hectares, region.delta_ndvi, region.delta_ndbi || 0);
+
+      // Clean, organized color-based indicator capsule with category and mathematical severity badge (NO random numbers)
       el.innerHTML = `
-        <div class="indicator-capsule" title="#${idx + 1} ${config.shortLabel}: ${region.user_label} (${haText}) — Click to inspect">
-          <span class="indicator-capsule-num">${idx + 1}</span>
+        <div class="indicator-capsule" title="${config.shortLabel}: ${region.user_label} (${haText}) — Severity: ${severity.level} — Click to inspect">
           <span class="indicator-capsule-dot" style="background:${canonicalColor}; box-shadow:0 0 6px ${canonicalColor};"></span>
           <span class="indicator-capsule-label">${config.shortLabel}</span>
+          <span class="indicator-capsule-severity" style="color: ${severity.color}; background: ${severity.bg}; border: 1px solid ${severity.border};">${severity.level}</span>
           <span class="indicator-capsule-ha">${haText}</span>
         </div>
       `;
 
       // Click: ONLY open alert card when explicitly pressed/clicked
       el.addEventListener('click', (e) => {
+        if (drawModeRef.current !== 'none') return;
         e.stopPropagation();
 
         if (popupRef.current) {
@@ -602,10 +956,14 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         const popupHtml = `
           <div style="background: ${cardBg}; border: 1.5px solid ${canonicalColor}; border-radius: 14px; padding: 14px; min-width: 250px; color: ${titleColor}; box-shadow: 0 16px 40px rgba(0,0,0,0.25); backdrop-filter: blur(16px); font-family: Inter, sans-serif;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <span style="font-size: 10.5px; font-weight: 800; color: ${canonicalColor}; text-transform: uppercase; letter-spacing: 0.06em; font-family: monospace;">HOTSPOT #${idx + 1} · ${config.shortLabel.toUpperCase()}</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 10.5px; font-weight: 800; color: ${canonicalColor}; text-transform: uppercase; letter-spacing: 0.06em; font-family: monospace;">${config.shortLabel.toUpperCase()}</span>
+                <span style="font-size: 9px; font-weight: 800; color: ${severity.color}; background: ${severity.bg}; border: 1px solid ${severity.border}; padding: 1px 5px; border-radius: 4px; font-family: monospace;">${severity.level}</span>
+              </div>
               <button id="close-ind-popup-${region.id}" style="background: none; border: none; color: ${closeColor}; font-size: 15px; cursor: pointer; padding: 0 4px; line-height: 1;" title="Close">✕</button>
             </div>
-            <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: ${titleColor}; line-height: 1.35;">${region.user_label}</div>
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px; color: ${titleColor}; line-height: 1.35;">${region.user_label}</div>
+            <div style="font-size: 10px; color: ${subColor}; font-family: monospace; margin-bottom: 8px; line-height: 1.3;">${severity.criteria}</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; font-family: monospace; background: ${metaBg}; padding: 7px; border-radius: 8px; border: 1px solid ${metaBorder}; margin-bottom: 8px;">
               <div>Area: <strong style="color: ${canonicalColor};">${haText}</strong></div>
               <div>ΔNDVI: <strong style="color: ${region.delta_ndvi < 0 ? '#ef4444' : '#10b981'};">${region.delta_ndvi > 0 ? '+' : ''}${region.delta_ndvi.toFixed(3)}</strong></div>
@@ -800,28 +1158,44 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
 
 
   // Smooth camera flyTo on region selection or AI zoom target
+  // Strict rule: SELECTED LOCATION !== SELECTED HOTSPOT.
+  // Never fly camera outside the active location's bounding box.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !context?.location?.bounding_box) return;
+
+    const [w, s, e, n] = context.location.bounding_box;
+    const pad = 0.08;
 
     if (zoomTarget) {
-      map.flyTo({
-        center: [zoomTarget[0], zoomTarget[1]],
-        zoom: zoomTarget[2] || 14,
-        speed: 1.2,
-        curve: 1.4,
-        essential: true,
-      });
+      const [zLon, zLat] = [zoomTarget[0], zoomTarget[1]];
+      // Verify zoomTarget is inside the active location bounds before flying
+      if (zLon >= w - pad && zLon <= e + pad && zLat >= s - pad && zLat <= n + pad) {
+        map.flyTo({
+          center: [zLon, zLat],
+          zoom: zoomTarget[2] || 14.2,
+          speed: 1.2,
+          curve: 1.4,
+          essential: true,
+        });
+      } else {
+        console.warn('MapViewer: blocked camera flyTo to stale zoomTarget outside active location bounds:', zoomTarget);
+      }
     } else if (selectedRegion) {
-      map.flyTo({
-        center: [selectedRegion.centroid[0], selectedRegion.centroid[1]],
-        zoom: 14.2,
-        speed: 1.2,
-        curve: 1.4,
-        essential: true,
-      });
+      const [rLon, rLat] = selectedRegion.centroid;
+      if (rLon >= w - pad && rLon <= e + pad && rLat >= s - pad && rLat <= n + pad) {
+        map.flyTo({
+          center: [rLon, rLat],
+          zoom: 14.2,
+          speed: 1.2,
+          curve: 1.4,
+          essential: true,
+        });
+      } else {
+        console.warn('MapViewer: blocked camera flyTo to selectedRegion outside active location bounds:', selectedRegion);
+      }
     }
-  }, [selectedRegion, zoomTarget]);
+  }, [selectedRegion, zoomTarget, context]);
 
   // Zoom control helpers
   const handleZoomIn = () => {
@@ -1044,151 +1418,172 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             </div>
           </div>
 
-          {/* Temporal Baseline & Observation Strip */}
-          <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-telemetry text-slate-600 dark:text-slate-400 pointer-events-auto">
-            {(fromYear || toYear) ? (
-              <div className="px-3 py-1 rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-blue-300 dark:border-blue-500/60 text-blue-700 dark:text-blue-300 shadow-md backdrop-blur-md flex items-center space-x-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-                <span>
-                  PASSES: <strong className="text-slate-900 dark:text-white font-mono text-xs">{fromYear || (context.actual_before_date ? context.actual_before_date.slice(0, 4) : 2021)}</strong> {fromImageData ? `(${fromImageData.date})` : ''} ➔ <strong className="text-slate-900 dark:text-white font-mono text-xs">{toYear || (context.actual_after_date ? context.actual_after_date.slice(0, 4) : 2026)}</strong> {toImageData ? `(${toImageData.date})` : ''}
-                </span>
-                {(isLoadingFromYear || isLoadingToYear) && (
-                  <Activity className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                )}
-                {onResetYears && (
-                  <button
-                    type="button"
-                    onClick={onResetYears}
-                    className="ml-2 px-2 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-500/30 text-[10px] border border-rose-200 dark:border-rose-500/40 font-bold transition-all"
-                    title="Return to initial analysis baseline vs comparative observation"
-                  >
-                    ✕ Reset View
-                  </button>
-                )}
-              </div>
-            ) : (
-              <>
-                <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur-md flex items-center space-x-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                  <span>Baseline:</span>
-                  <strong className="text-slate-900 dark:text-white">{context.actual_before_date}</strong>
-                </span>
-                <span className="text-slate-400 dark:text-slate-500 font-mono">➔</span>
-                <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-400 shadow-sm backdrop-blur-md flex items-center space-x-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
-                  <span>Pass:</span>
-                  <strong className="text-slate-900 dark:text-white">{context.actual_after_date}</strong>
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-400 shadow-sm backdrop-blur-md hidden md:inline-flex items-center space-x-1">
-                  <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>100% Usable Clear Pixels</span>
-                </span>
-              </>
-            )}
-          </div>
+          {/* Temporal Baseline & Observation Strip - Hidden when location dropdown is open so it NEVER overlaps */}
+          {!locationDropdownOpen && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-telemetry text-slate-600 dark:text-slate-400 pointer-events-auto animate-in fade-in duration-150">
+              {(fromYear || toYear) ? (
+                <div className="px-3 py-1 rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-blue-300 dark:border-blue-500/60 text-blue-700 dark:text-blue-300 shadow-md backdrop-blur-md flex items-center space-x-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                  <span>
+                    PASSES: <strong className="text-slate-900 dark:text-white font-mono text-xs">{fromYear || (context.actual_before_date ? context.actual_before_date.slice(0, 4) : 2021)}</strong> {fromImageData ? `(${fromImageData.date})` : ''} ➔ <strong className="text-slate-900 dark:text-white font-mono text-xs">{toYear || (context.actual_after_date ? context.actual_after_date.slice(0, 4) : 2026)}</strong> {toImageData ? `(${toImageData.date})` : ''}
+                  </span>
+                  {(isLoadingFromYear || isLoadingToYear) && (
+                    <Activity className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                  )}
+                  {onResetYears && (
+                    <button
+                      type="button"
+                      onClick={onResetYears}
+                      className="ml-2 px-2 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-500/30 text-[10px] border border-rose-200 dark:border-rose-500/40 font-bold transition-all"
+                      title="Return to initial analysis baseline vs comparative observation"
+                    >
+                      ✕ Reset View
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur-md flex items-center space-x-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                    <span>Baseline:</span>
+                    <strong className="text-slate-900 dark:text-white">{context.actual_before_date}</strong>
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-500 font-mono">➔</span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-400 shadow-sm backdrop-blur-md flex items-center space-x-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+                    <span>Pass:</span>
+                    <strong className="text-slate-900 dark:text-white">{context.actual_after_date}</strong>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-400 shadow-sm backdrop-blur-md hidden md:inline-flex items-center space-x-1">
+                    <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                    <span>100% Usable Clear Pixels</span>
+                  </span>
+                </>
+              )}
+            </div>
+          )}
 
-          {/* Row 3: Category Color Legend Bar — Embedded cleanly in HUD so it NEVER overlaps! */}
-          <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-slate-200/80 dark:border-zinc-800 backdrop-blur-xl shadow-xl text-[11px] font-mono text-slate-700 dark:text-slate-300 pointer-events-auto">
-            <span className="text-[10px] text-slate-400 uppercase px-2 font-bold font-telemetry">CATEGORIES:</span>
+          {/* Row 3: Category Color Legend Bar — Hidden when dropdown is open to ensure 100% clean view */}
+          {!locationDropdownOpen && (
+            <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-slate-200/80 dark:border-zinc-800 backdrop-blur-xl shadow-xl text-[11px] font-mono text-slate-700 dark:text-slate-300 pointer-events-auto animate-in fade-in duration-150">
+              <span className="text-[10px] text-slate-400 uppercase px-2 font-bold font-telemetry">CATEGORIES:</span>
 
-            {/* 1. Deforestation / Loss (Red #ef4444) */}
-            <button
-              type="button"
-              onClick={() => onFilterCategory?.(filteredCategory === 'deforestation' ? null : 'deforestation')}
-              className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
-                filteredCategory === 'deforestation' 
-                  ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-700 font-bold shadow-xs' 
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
-              }`}
-              title="Filter to Deforestation / Canopy Loss (Red)"
-            >
-              <div className="relative shrink-0">
-                <img 
-                  src="/thumbnails/category_deforestation.jpg" 
-                  alt="Deforestation" 
-                  className="w-5 h-5 rounded-md object-cover border border-rose-500 shadow-xs" 
-                />
-                <span className="w-2 h-2 rounded-full bg-rose-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
-              </div>
-              <span>Deforestation ({indicatorCounts.deforestation})</span>
-            </button>
-
-            {/* 2. Urban Growth / Construction (Orange #f97316) */}
-            <button
-              type="button"
-              onClick={() => onFilterCategory?.(filteredCategory === 'urban' ? null : 'urban')}
-              className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
-                filteredCategory === 'urban' 
-                  ? 'bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-700 font-bold shadow-xs' 
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
-              }`}
-              title="Filter to Urban Expansion & Construction (Orange)"
-            >
-              <div className="relative shrink-0">
-                <img 
-                  src="/thumbnails/category_urban.jpg" 
-                  alt="Urban Growth" 
-                  className="w-5 h-5 rounded-md object-cover border border-orange-500 shadow-xs" 
-                />
-                <span className="w-2 h-2 rounded-full bg-orange-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
-              </div>
-              <span>Urban ({indicatorCounts.urban})</span>
-            </button>
-
-            {/* 3. Water Bodies / Hydrology (Blue #0284c7) */}
-            <button
-              type="button"
-              onClick={() => onFilterCategory?.(filteredCategory === 'water' ? null : 'water')}
-              className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
-                filteredCategory === 'water' 
-                  ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-700 font-bold shadow-xs' 
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
-              }`}
-              title="Filter to Water Bodies & Hydrology (Blue)"
-            >
-              <div className="relative shrink-0">
-                <img 
-                  src="/thumbnails/category_water.jpg" 
-                  alt="Water" 
-                  className="w-5 h-5 rounded-md object-cover border border-blue-500 shadow-xs" 
-                />
-                <span className="w-2 h-2 rounded-full bg-blue-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
-              </div>
-              <span>Water ({indicatorCounts.water})</span>
-            </button>
-
-            {/* 4. Vegetation Growth / Regrowth (Green #10b981) */}
-            <button
-              type="button"
-              onClick={() => onFilterCategory?.(filteredCategory === 'vegetation' ? null : 'vegetation')}
-              className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
-                filteredCategory === 'vegetation' 
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700 font-bold shadow-xs' 
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
-              }`}
-              title="Filter to Vegetation Regrowth & Crops (Green)"
-            >
-              <div className="relative shrink-0">
-                <img 
-                  src="/thumbnails/category_regrowth.jpg" 
-                  alt="Vegetation Regrowth" 
-                  className="w-5 h-5 rounded-md object-cover border border-emerald-500 shadow-xs" 
-                />
-                <span className="w-2 h-2 rounded-full bg-emerald-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
-              </div>
-              <span>Vegetation ({indicatorCounts.vegetation})</span>
-            </button>
-
-            {filteredCategory && (
+              {/* 1. Deforestation / Loss (Red #ef4444) */}
               <button
                 type="button"
-                onClick={() => onFilterCategory?.(null)}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-blue-600 dark:text-blue-400 text-[10px] font-bold border border-slate-200 dark:border-zinc-700 ml-1"
+                onClick={() => onFilterCategory?.(filteredCategory === 'deforestation' ? null : 'deforestation')}
+                className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
+                  filteredCategory === 'deforestation' 
+                    ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-700 font-bold shadow-xs' 
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
+                }`}
+                title="Filter to Deforestation / Canopy Loss (Red)"
               >
-                RESET
+                <div className="relative shrink-0">
+                  <img 
+                    src="/thumbnails/category_deforestation.jpg" 
+                    alt="Deforestation" 
+                    className="w-5 h-5 rounded-md object-cover border border-rose-500 shadow-xs" 
+                  />
+                  <span className="w-2 h-2 rounded-full bg-rose-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
+                </div>
+                <span>Deforestation ({indicatorCounts.deforestation})</span>
               </button>
-            )}
-          </div>
+
+              {/* 2. Urban Growth / Construction (Orange #f97316) */}
+              <button
+                type="button"
+                onClick={() => onFilterCategory?.(filteredCategory === 'urban' ? null : 'urban')}
+                className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
+                  filteredCategory === 'urban' 
+                    ? 'bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-700 font-bold shadow-xs' 
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
+                }`}
+                title="Filter to Urban Expansion & Construction (Orange)"
+              >
+                <div className="relative shrink-0">
+                  <img 
+                    src="/thumbnails/category_urban.jpg" 
+                    alt="Urban Growth" 
+                    className="w-5 h-5 rounded-md object-cover border border-orange-500 shadow-xs" 
+                  />
+                  <span className="w-2 h-2 rounded-full bg-orange-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
+                </div>
+                <span>Urban ({indicatorCounts.urban})</span>
+              </button>
+
+              {/* 3. Water Bodies / Hydrology (Blue #0284c7) */}
+              <button
+                type="button"
+                onClick={() => onFilterCategory?.(filteredCategory === 'water' ? null : 'water')}
+                className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
+                  filteredCategory === 'water' 
+                    ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-700 font-bold shadow-xs' 
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
+                }`}
+                title="Filter to Water Bodies & Hydrology (Blue)"
+              >
+                <div className="relative shrink-0">
+                  <img 
+                    src="/thumbnails/category_water.jpg" 
+                    alt="Water" 
+                    className="w-5 h-5 rounded-md object-cover border border-blue-500 shadow-xs" 
+                  />
+                  <span className="w-2 h-2 rounded-full bg-blue-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
+                </div>
+                <span>Water ({indicatorCounts.water})</span>
+              </button>
+
+              {/* 4. Vegetation Growth / Regrowth (Green #10b981) */}
+              <button
+                type="button"
+                onClick={() => onFilterCategory?.(filteredCategory === 'vegetation' ? null : 'vegetation')}
+                className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
+                  filteredCategory === 'vegetation' 
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700 font-bold shadow-xs' 
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
+                }`}
+                title="Filter to Vegetation Regrowth & Crops (Green)"
+              >
+                <div className="relative shrink-0">
+                  <img 
+                    src="/thumbnails/category_regrowth.jpg" 
+                    alt="Vegetation Regrowth" 
+                    className="w-5 h-5 rounded-md object-cover border border-emerald-500 shadow-xs" 
+                  />
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
+                </div>
+                <span>Vegetation ({indicatorCounts.vegetation})</span>
+              </button>
+
+              {filteredCategory && (
+                <button
+                  type="button"
+                  onClick={() => onFilterCategory?.(null)}
+                  className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-blue-600 dark:text-blue-400 text-[10px] font-bold border border-slate-200 dark:border-zinc-700 ml-1"
+                >
+                  RESET
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Prominent Floating Exit Fullscreen Button in Top-Right when Maximized */}
+      {isMapMaximized && onToggleMaximizeMap && (
+        <div className="absolute top-4 right-4 z-50 animate-in fade-in duration-150">
+          <button
+            type="button"
+            onClick={onToggleMaximizeMap}
+            aria-label="Restore map"
+            className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-mono font-bold shadow-2xl border border-blue-400/60 backdrop-blur-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
+            title="Restore Map to Normal Studio Layout (Esc)"
+          >
+            <Minimize2 className="w-4 h-4 text-white" />
+            <span>RESTORE MAP [ ↙ ]</span>
+            <span className="hidden sm:inline text-[10px] opacity-80 font-normal">(ESC)</span>
+          </button>
         </div>
       )}
 
@@ -1198,6 +1593,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
           <button
             type="button"
             onClick={onToggleMaximizeMap}
+            aria-label={isMapMaximized ? "Restore map" : "Maximize map"}
             className={`h-8 w-8 rounded-xl flex items-center justify-center transition-all ${
               isMapMaximized
                 ? 'bg-blue-600 text-white shadow-md font-bold'
@@ -1232,7 +1628,159 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         >
           <RotateCcw className="w-3.5 h-3.5" />
         </button>
+
+        {/* Draw AOI Tool Trigger */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setDrawMenuOpen(!drawMenuOpen);
+              if (drawMode !== 'none') {
+                setDrawMode('none');
+              }
+            }}
+            className={`h-8 w-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+              drawMode !== 'none' || drawMenuOpen
+                ? 'bg-blue-600 text-white shadow-md font-bold'
+                : 'bg-slate-100 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400'
+            }`}
+            title="Draw Area of Interest to Analyze (Rectangle, Circle, Polygon)"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+
+          {/* Expanded Drawing Tools Menu */}
+          {drawMenuOpen && (
+            <div className="absolute top-0 right-10 z-40 bg-white/95 dark:bg-zinc-900/95 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-1.5 flex items-center space-x-1 backdrop-blur-xl animate-in fade-in slide-in-from-right-2 duration-150">
+              <button
+                type="button"
+                onClick={() => {
+                  handleClearDrawnAoi();
+                  setDrawMode('rectangle');
+                  setDrawMenuOpen(false);
+                }}
+                className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-mono font-medium transition-all cursor-pointer ${
+                  drawMode === 'rectangle'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-800'
+                }`}
+                title="Draw Box / Rectangle AOI"
+              >
+                <Square className="w-3.5 h-3.5" />
+                <span>Box</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleClearDrawnAoi();
+                  setDrawMode('polygon');
+                  setDrawMenuOpen(false);
+                }}
+                className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-mono font-medium transition-all cursor-pointer ${
+                  drawMode === 'polygon'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-800'
+                }`}
+                title="Draw Multi-point Polygon AOI"
+              >
+                <Shapes className="w-3.5 h-3.5" />
+                <span>Poly</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleClearDrawnAoi();
+                  setDrawMode('circle');
+                  setDrawMenuOpen(false);
+                }}
+                className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-mono font-medium transition-all cursor-pointer ${
+                  drawMode === 'circle'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-800'
+                }`}
+                title="Draw Radius Circle AOI"
+              >
+                <Circle className="w-3.5 h-3.5" />
+                <span>Circle</span>
+              </button>
+              {drawnCoordinates.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleClearDrawnAoi();
+                    setDrawMenuOpen(false);
+                  }}
+                  className="px-2 py-1.5 rounded-xl text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                  title="Clear Drawn AOI"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Top Banner when Drawing is Active */}
+      {drawMode !== 'none' && (
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 z-40 bg-blue-600 text-white px-4 py-2 rounded-full shadow-2xl font-mono text-xs font-bold flex items-center space-x-3 backdrop-blur-xl">
+          <div className="w-2 h-2 rounded-full bg-white animate-ping shrink-0" />
+          <span>
+            {drawMode === 'rectangle' && 'Click 1st corner, then 2nd corner to box region'}
+            {drawMode === 'circle' && 'Click center point, then click outer edge for circle'}
+            {drawMode === 'polygon' && `Click points on map (${polyVertices.length} placed) · Double-click to complete`}
+          </span>
+          {drawMode === 'polygon' && polyVertices.length >= 3 && (
+            <button
+              type="button"
+              onClick={handleFinishPolygon}
+              className="px-2.5 py-0.5 rounded-lg bg-white text-blue-700 hover:bg-blue-50 text-[11px] font-bold shadow-xs cursor-pointer"
+            >
+              Complete
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleCancelDrawing}
+            className="text-white/80 hover:text-white cursor-pointer ml-1 text-sm font-bold"
+            title="Cancel Drawing (Esc)"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Floating Action Banner when Custom AOI is Drawn */}
+      {drawnCoordinates.length >= 3 && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white/95 dark:bg-zinc-900/95 border border-blue-500/60 rounded-2xl shadow-2xl p-3 sm:px-4 flex items-center space-x-3 sm:space-x-4 backdrop-blur-xl animate-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center space-x-2 shrink-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+            <div>
+              <div className="text-[10px] font-mono text-slate-500 dark:text-zinc-400 uppercase font-semibold">SELECTED AOI</div>
+              <div className="text-xs font-bold text-slate-900 dark:text-white font-mono">
+                ~{customAoiHectares.toLocaleString()} Hectares
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleAnalyzeDrawnAoi}
+            disabled={isAnalyzing}
+            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 transition-all disabled:opacity-50 cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{isAnalyzing ? 'ANALYZING...' : 'ANALYZE SELECTED REGION'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleClearDrawnAoi}
+            className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 dark:bg-zinc-800 dark:hover:bg-rose-950/40 dark:text-zinc-300 text-xs font-semibold transition-colors cursor-pointer"
+            title="Clear drawn area"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* Prominent "EXPLAIN THIS MAP" Button */}
       <div className="absolute top-4 right-16 z-20 hidden md:block">
@@ -1254,25 +1802,171 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         {/* Layer Toggles Panel */}
         <div className="rounded-2xl p-2 flex items-center space-x-2 shadow-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl text-slate-700 dark:text-slate-300">
 
-          {/* Time Changes Toggle Button */}
-          {onToggleTimeDrawer && (
+          {/* Prominent Interactive Time / Year Selector (with In-Place Popover) */}
+          <div className="relative">
             <button
               type="button"
-              onClick={onToggleTimeDrawer}
-              className={`px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all ${
-                timeDrawerOpen
-                  ? 'bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/50 shadow-sm font-bold'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-transparent'
+              onClick={() => setIsTimePopoverOpen(!isTimePopoverOpen)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all cursor-pointer ${
+                isTimePopoverOpen || timeDrawerOpen
+                  ? 'bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/50 shadow-sm font-bold ring-1 ring-orange-400/40'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-700/60 bg-white/80 dark:bg-zinc-900/80 shadow-xs'
               }`}
-              title="Toggle Time Changes / Observation Passes (2020–2026)"
+              title="Interactive Time / Year Selector (2020–2026)"
             >
               <Clock className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-              <span className="hidden sm:inline font-semibold">TIME CHANGES</span>
-              <span className="text-[10px] font-mono text-orange-700 dark:text-orange-300 bg-orange-100/70 dark:bg-orange-500/20 px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-500/30 font-semibold">
+              <span className="font-bold">TIME CHANGES:</span>
+              <span className="font-mono text-orange-700 dark:text-orange-300 bg-orange-100/80 dark:bg-orange-500/25 px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-500/40 font-bold">
                 {fromYear || (context?.actual_before_date ? context.actual_before_date.slice(0, 4) : 2021)}➔{toYear || (context?.actual_after_date ? context.actual_after_date.slice(0, 4) : 2026)}
               </span>
+              <ChevronDown className="w-3.5 h-3.5 text-orange-600/70 dark:text-orange-400/70" />
             </button>
-          )}
+
+            {/* In-Place Time Machine Popover */}
+            {isTimePopoverOpen && (
+              <div className="absolute bottom-12 left-0 z-50 w-72 sm:w-80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-4 text-slate-900 dark:text-white animate-in fade-in slide-in-from-bottom-2 duration-150">
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100 dark:border-zinc-800">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                    <span className="font-telemetry font-bold text-xs uppercase tracking-wider">Time Selector (2020–2026)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsTimePopoverOpen(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="mb-3">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-1.5 font-bold">
+                    Quick Comparison Presets:
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5 text-xs font-mono">
+                    {[
+                      { from: 2021, to: 2026, label: '2021 ➔ 2026' },
+                      { from: 2020, to: 2023, label: '2020 ➔ 2023' },
+                      { from: 2023, to: 2026, label: '2023 ➔ 2026' },
+                      { from: 2020, to: 2026, label: '2020 ➔ 2026' },
+                    ].map((p) => {
+                      const curFrom = fromYear || (context?.actual_before_date ? parseInt(context.actual_before_date.slice(0, 4)) : 2021);
+                      const curTo = toYear || (context?.actual_after_date ? parseInt(context.actual_after_date.slice(0, 4)) : 2026);
+                      const isSel = curFrom === p.from && curTo === p.to;
+
+                      return (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => {
+                            if (context?.timeline) {
+                              const f1 = context.timeline.find(f => f.year === p.from);
+                              const f2 = context.timeline.find(f => f.year === p.to);
+                              if (f1 && onSelectFromYear) onSelectFromYear(f1);
+                              if (f2 && onSelectToYear) onSelectToYear(f2);
+                            }
+                          }}
+                          className={`px-2 py-1.5 rounded-lg border text-center transition-all cursor-pointer ${
+                            isSel
+                              ? 'bg-orange-500 text-white font-bold border-orange-600 shadow-xs'
+                              : 'bg-slate-50 dark:bg-zinc-800 hover:bg-orange-50 dark:hover:bg-orange-950/30 border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Direct Dropdown Year Selectors */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-1">
+                      Start Year (Baseline)
+                    </label>
+                    <select
+                      value={fromYear || (context?.actual_before_date ? parseInt(context.actual_before_date.slice(0, 4)) : 2021)}
+                      onChange={(e) => {
+                        const yr = parseInt(e.target.value);
+                        if (context?.timeline && onSelectFromYear) {
+                          const f = context.timeline.find(item => item.year === yr) || {
+                            year: yr,
+                            date: `${yr}-03-15`,
+                            imageUrl: '',
+                            metrics: { vegetation_ndvi: 0.45, urban_ndbi: 0.12, water_ndwi: 0.05 },
+                            description: `${yr} Sentinel-2 observation pass`
+                          };
+                          onSelectFromYear(f);
+                        }
+                      }}
+                      className="w-full px-2 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-mono font-bold"
+                    >
+                      {[2020, 2021, 2022, 2023, 2024, 2025].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-1">
+                      End Year (Comparison)
+                    </label>
+                    <select
+                      value={toYear || (context?.actual_after_date ? parseInt(context.actual_after_date.slice(0, 4)) : 2026)}
+                      onChange={(e) => {
+                        const yr = parseInt(e.target.value);
+                        if (context?.timeline && onSelectToYear) {
+                          const f = context.timeline.find(item => item.year === yr) || {
+                            year: yr,
+                            date: `${yr}-03-15`,
+                            imageUrl: '',
+                            metrics: { vegetation_ndvi: 0.45, urban_ndbi: 0.12, water_ndwi: 0.05 },
+                            description: `${yr} Sentinel-2 observation pass`
+                          };
+                          onSelectToYear(f);
+                        }
+                      }}
+                      className="w-full px-2 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-mono font-bold"
+                    >
+                      {[2021, 2022, 2023, 2024, 2025, 2026].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Popover Actions */}
+                <div className="flex items-center space-x-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                  {onToggleTimeDrawer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsTimePopoverOpen(false);
+                        onToggleTimeDrawer();
+                      }}
+                      className="flex-1 py-1.5 px-2.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-telemetry font-bold transition-all text-center cursor-pointer shadow-xs"
+                    >
+                      Detailed Timeline Drawer ➔
+                    </button>
+                  )}
+                  {onResetYears && (fromYear || toYear) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onResetYears();
+                        setIsTimePopoverOpen(false);
+                      }}
+                      className="py-1.5 px-2 rounded-lg bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-400 text-xs font-mono cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Dedicated Option Button: Raw Satellite Timeline Studio (Side-by-Side) */}
           {onOpenRawSatelliteModal && (

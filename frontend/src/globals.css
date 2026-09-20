@@ -212,20 +212,18 @@
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.7), 0 0 16px var(--indicator-glow, rgba(37, 99, 235, 0.35));
 }
 
-.indicator-capsule-num {
+.indicator-capsule-severity {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--indicator-color, #2563eb);
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 8.5px;
   font-family: ui-monospace, SFMono-Regular, monospace;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  shrink: 0;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  line-height: 1.2;
 }
 
 .indicator-capsule-dot {
@@ -438,4 +436,15 @@
 
 .maplibregl-ctrl-group button:last-child {
   border-bottom: none !important;
+}
+
+/* Ensure MapLibre map and canvas are always strictly LTR regardless of document RTL direction */
+.maplibregl-map,
+.maplibregl-canvas-container,
+.maplibregl-canvas,
+.maplibregl-ctrl-top-left,
+.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right {
+  direction: ltr !important;
 }

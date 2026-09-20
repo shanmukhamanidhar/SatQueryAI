@@ -114,8 +114,10 @@ async def fetch_wayback_satellite_image(year: int, bbox: List[float], grid_size:
         tiles_w = x1 - x0 + 1
         tiles_h = y1 - y0 + 1
 
-        if tiles_w > 8 or tiles_h > 8:
-            zoom = 11
+        # Adaptively scale zoom so that large geographic targets (states, regions, basins)
+        # request a manageable number of high-res tiles (at most ~6x6 = 36 tiles)
+        while (tiles_w > 6 or tiles_h > 6) and zoom > 5:
+            zoom -= 1
             x0, y0 = deg2num(n, w, zoom)
             x1, y1 = deg2num(s, e, zoom)
             tiles_w = x1 - x0 + 1
@@ -413,7 +415,9 @@ def extract_change_polygons(
     cls_before: np.ndarray,
     cls_after: np.ndarray,
     bbox: List[float],
-    total_aoi_ha: float
+    total_aoi_ha: float,
+    location_id: Optional[str] = None,
+    location_name: Optional[str] = None
 ) -> List[ChangeRegion]:
     """
     Performs morphological change detection, connected-component analysis,
@@ -748,5 +752,17 @@ def extract_change_polygons(
     for rank, r in enumerate(top_regions, 1):
         r.indicator_number = rank
         r.id = f"cr-{rank}"
+        r.location_id = location_id
+        r.location_name = location_name
+        
+        # Mathematical severity calibration
+        if r.area_hectares >= 500 or r.delta_ndvi <= -0.16 or r.delta_ndbi >= 0.12:
+            r.severity_level = "CRITICAL"
+        elif r.area_hectares >= 150 or r.delta_ndvi <= -0.10 or r.delta_ndbi >= 0.08:
+            r.severity_level = "HIGH"
+        elif r.area_hectares >= 30 or abs(r.delta_ndvi) >= 0.06 or abs(r.delta_ndbi) >= 0.05:
+            r.severity_level = "MODERATE"
+        else:
+            r.severity_level = "LOW"
 
     return top_regions

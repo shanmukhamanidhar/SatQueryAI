@@ -56,7 +56,7 @@ export const FeaturePanels: React.FC<FeaturePanelsProps> = ({ onSelectFeature })
   ];
 
   return (
-    <section id="features-section" className="py-16 bg-slate-50 dark:bg-[#09090b] border-b border-slate-200 dark:border-zinc-800 relative transition-colors">
+    <section id="features-section" className="scroll-mt-20 py-16 bg-slate-50 dark:bg-[#09090b] border-b border-slate-200 dark:border-zinc-800 relative transition-colors">
       <div className="max-w-7xl mx-auto px-4 lg:px-8">
         <div className="mb-10 text-center max-w-2xl mx-auto">
           <div className="inline-flex items-center space-x-2 text-[11px] font-mono text-blue-600 dark:text-blue-400 uppercase tracking-widest font-semibold mb-2">
@@ -76,8 +76,17 @@ export const FeaturePanels: React.FC<FeaturePanelsProps> = ({ onSelectFeature })
             return (
               <div
                 key={p.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`Explore ${p.title} module`}
                 onClick={() => onSelectFeature(p.id)}
-                className={`group cursor-pointer rounded-2xl p-6 bg-white dark:bg-zinc-900/80 hover:bg-slate-50 dark:hover:bg-zinc-850 border ${p.borderClass} transition-all duration-200 shadow-xs hover:shadow-lg flex flex-col justify-between`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectFeature(p.id);
+                  }
+                }}
+                className={`group cursor-pointer rounded-2xl p-6 bg-white dark:bg-zinc-900/80 hover:bg-slate-50 dark:hover:bg-zinc-850 border ${p.borderClass} transition-all duration-200 shadow-xs hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 flex flex-col justify-between text-left`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
@@ -98,7 +107,7 @@ export const FeaturePanels: React.FC<FeaturePanelsProps> = ({ onSelectFeature })
                   </p>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-zinc-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-zinc-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors w-full">
                   <span>Explore Module</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>

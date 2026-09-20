@@ -8,13 +8,17 @@ import {
   ShieldCheck, 
   Layers, 
   Compass, 
-  Trees,
-  Droplets,
-  Building2,
-  Calendar,
-  Satellite
+  Trees, 
+  Droplets, 
+  Building2, 
+  Calendar, 
+  Satellite,
+  HelpCircle,
+  AlertCircle
 } from 'lucide-react';
-import { AnalysisContext } from '../lib/types';
+import { AnalysisContext, QueryUnderstanding } from '../lib/types';
+import { parseQuery } from '../lib/api';
+import { RealisticEarth } from './RealisticEarth';
 
 interface HeroSectionProps {
   onSearch: (query: string) => void;
@@ -32,21 +36,94 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onExploreClick,
 }) => {
   const [queryInput, setQueryInput] = useState('');
+  const [inputFeedback, setInputFeedback] = useState<{
+    type: 'error' | 'info' | 'warning';
+    message: string;
+  } | null>(null);
+  const [disambiguation, setDisambiguation] = useState<{
+    question: string;
+    options: string[];
+  } | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (queryInput.trim() && !isAnalyzing) {
-      onSearch(queryInput.trim());
+  const executeQuery = async (queryText: string) => {
+    const text = queryText.trim();
+    if (!text) {
+      setInputFeedback({
+        type: 'error',
+        message: 'Please enter a location or Earth-observation question.',
+      });
+      return;
+    }
+
+    setInputFeedback(null);
+    setDisambiguation(null);
+
+    // Fast client pre-flight check via backend NLP engine
+    try {
+      const prev = activeContext ? {
+        location: activeContext.location?.name,
+        start_year: activeContext.actual_before_date ? parseInt(activeContext.actual_before_date.slice(0, 4)) : 2021,
+        end_year: activeContext.actual_after_date ? parseInt(activeContext.actual_after_date.slice(0, 4)) : 2026,
+      } : undefined;
+
+      const parsed: QueryUnderstanding = await parseQuery({
+        query: text,
+        previous_context: prev,
+      });
+
+      if (!parsed.is_earth_observation) {
+        setInputFeedback({
+          type: 'info',
+          message: parsed.rejection_reason || 'SatQueryAI is designed for satellite and Earth-observation analysis. Try asking about environmental, land-use, water, vegetation, or urban changes for a location.',
+        });
+        return;
+      }
+
+      if (parsed.is_ambiguous && parsed.disambiguation_options && parsed.disambiguation_options.length > 0) {
+        setDisambiguation({
+          question: parsed.clarification_question || 'Which location do you mean?',
+          options: parsed.disambiguation_options,
+        });
+        return;
+      }
+
+      if (parsed.year_warning) {
+        setInputFeedback({
+          type: 'warning',
+          message: parsed.year_warning,
+        });
+      }
+
+      onSearch(text);
+    } catch (err: any) {
+      // If network fails or fallback, dispatch query directly to master analysis
+      onSearch(text);
     }
   };
 
-  const suggestionChips = [
-    { label: "Visakhapatnam, India", query: "Analyze Visakhapatnam between 2021 and 2026", color: "text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-300 dark:bg-blue-950/40 dark:border-blue-900/50" },
-    { label: "Krishna River (Vijayawada)", query: "Krishna River in Vijayawada", color: "text-sky-700 bg-sky-50 border-sky-200 dark:text-sky-300 dark:bg-sky-950/40 dark:border-sky-900/50" },
-    { label: "Hyderabad Urban Growth", query: "Hyderabad, Telangana, India", color: "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-300 dark:bg-orange-950/40 dark:border-orange-900/50" },
-    { label: "Bengaluru IT Sprawl", query: "Bengaluru, Karnataka between 2021 and 2026", color: "text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/50" },
-    { label: "Amazon Rainforest Basin", query: "Analyze Para, Brazil between 2021 and 2026", color: "text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-900/50" },
-    { label: "Tokyo Bay Coastal Metro", query: "Tokyo, Japan", color: "text-indigo-700 bg-indigo-50 border-indigo-200 dark:text-indigo-300 dark:bg-indigo-950/40 dark:border-indigo-900/50" },
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAnalyzing) {
+      executeQuery(queryInput);
+    }
+  };
+
+  const handleChipClick = (prompt: string) => {
+    setQueryInput(prompt);
+    if (!isAnalyzing) {
+      executeQuery(prompt);
+    }
+  };
+
+  const tryAskingExamples = [
+    { label: "Vijayawada since 2021", query: "What changed in Vijayawada since 2021?" },
+    { label: "Dubai 2020–2026", query: "Compare Dubai from 2020 to 2026" },
+    { label: "Urban growth in Hyderabad", query: "Show urban growth in Hyderabad" },
+    { label: "Vegetation in Bengaluru", query: "How has vegetation changed in Bengaluru?" },
+    { label: "Water changes in Krishna River", query: "Show water changes in Krishna River" },
+    { label: "Amazon Deforestation", query: "Show deforestation in the Amazon from 2021 to 2026" },
+    { label: "Coastline in Mumbai", query: "How has the coastline changed in Mumbai?" },
+    { label: "Changes in Andhra Pradesh", query: "Show me changes in Andhra Pradesh between 2021 and 2026" },
   ];
 
   return (
@@ -56,35 +133,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {/* Soft Radial Ambient Aura */}
         <div className="absolute top-1/4 right-0 lg:right-[-5%] w-[600px] lg:w-[850px] h-[600px] lg:h-[850px] rounded-full bg-gradient-to-br from-blue-500/10 via-emerald-500/5 to-transparent blur-3xl opacity-70" />
 
-        {/* Photorealistic Moving Satellite Earth Sphere */}
-        <div className="absolute -right-32 sm:-right-20 lg:right-[-4%] top-[12%] lg:top-[6%] w-[460px] sm:w-[580px] lg:w-[740px] h-[460px] sm:h-[580px] lg:h-[740px] pointer-events-none select-none">
-          {/* Orbital Orbit Ellipse */}
-          <div className="absolute inset-0 rounded-full border border-blue-500/20 scale-125 rotate-[-22deg] animate-pulse pointer-events-none" />
-          <div className="absolute inset-[-40px] rounded-full border border-dashed border-slate-400/20 dark:border-blue-400/20 rotate-[-22deg] pointer-events-none" />
-
-          {/* 3D Earth Globe Container */}
-          <div className="earth-sphere-realistic">
-            <div className="earth-surface" />
-            <div className="earth-clouds" />
-            <div className="earth-atmosphere-shadow" />
-            <div className="earth-rim-glow" />
-          </div>
-
-          {/* Sentinel-2 Orbiting Telemetry Marker */}
-          <div 
-            className="absolute inset-[-60px] pointer-events-none"
-            style={{ animation: 'satellite-orbit-sweep 26s linear infinite' }}
-          >
-            <div className="absolute top-8 right-16 flex items-center space-x-2">
-              <div className="relative">
-                <span className="w-3.5 h-3.5 rounded-full bg-blue-600 block shadow-[0_0_14px_#2563eb]" />
-                <span className="w-8 h-8 rounded-full border border-blue-500/60 block absolute -top-[9px] -left-[9px] animate-ping" />
-              </div>
-              <div className="px-2.5 py-0.5 rounded-full bg-white/90 dark:bg-zinc-900/90 border border-blue-200 dark:border-blue-800 text-[10px] font-mono text-blue-700 dark:text-blue-400 shadow-md backdrop-blur-md font-semibold">
-                SENTINEL-2A · 786 KM
-              </div>
-            </div>
-          </div>
+        {/* Photorealistic Scientific 3D Earth Visualization */}
+        <div className="absolute -right-12 sm:-right-10 lg:right-[-2%] top-[12%] lg:top-[5%] w-[340px] sm:w-[500px] lg:w-[760px] h-[340px] sm:h-[500px] lg:h-[760px] pointer-events-none select-none">
+          <RealisticEarth />
         </div>
 
         {/* Subtle Fade Gradients for High Readability */}
@@ -121,7 +172,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <button
               type="button"
               onClick={onExploreClick}
-              className="px-6 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm tracking-wide transition-all shadow-md shadow-blue-500/25 flex items-center space-x-2 group"
+              className="px-6 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm tracking-wide transition-all shadow-md shadow-blue-500/25 flex items-center space-x-2 group cursor-pointer"
             >
               <span>Explore Satellite Maps</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -135,51 +186,113 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <span>Ask Any Location on Earth</span>
             </div>
 
-            <form onSubmit={handleSubmit} className="relative flex items-center">
-              <Search className="w-4 h-4 text-slate-400 dark:text-zinc-500 absolute left-3.5 pointer-events-none" />
-              <input
-                type="text"
-                value={queryInput}
-                onChange={(e) => setQueryInput(e.target.value)}
-                placeholder="Ask about changes anywhere... (e.g. 'What changed in Visakhapatnam?')"
-                className="w-full pl-10 pr-28 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:outline-none focus:border-blue-600 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all font-sans"
-                disabled={isAnalyzing}
-              />
-              <button
-                type="submit"
-                disabled={isAnalyzing || !queryInput.trim()}
-                className="absolute right-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center space-x-1.5 font-mono shadow-xs"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Activity className="w-3.5 h-3.5 animate-spin" />
-                    <span>ANALYZING</span>
-                  </>
-                ) : (
-                  <>
-                    <span>ANALYZE</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </>
+            <form onSubmit={handleSubmit} className="relative flex flex-col">
+              <div className="relative flex items-center w-full">
+                <Search className="w-4 h-4 text-slate-400 dark:text-zinc-500 absolute left-3.5 pointer-events-none" />
+                <input
+                  type="text"
+                  value={queryInput}
+                  onChange={(e) => {
+                    setQueryInput(e.target.value);
+                    if (inputFeedback) setInputFeedback(null);
+                    if (disambiguation) setDisambiguation(null);
+                  }}
+                  placeholder="Ask about changes anywhere... (e.g. 'What changed in Vijayawada since 2021?')"
+                  className="w-full pl-10 pr-28 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:outline-none focus:border-blue-600 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all font-sans"
+                  disabled={isAnalyzing}
+                />
+                {queryInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQueryInput('');
+                      setInputFeedback(null);
+                      setDisambiguation(null);
+                    }}
+                    className="absolute right-28 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs px-1 cursor-pointer"
+                    title="Clear input"
+                  >
+                    ✕
+                  </button>
                 )}
-              </button>
+                <button
+                  type="submit"
+                  disabled={isAnalyzing}
+                  className="absolute right-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center space-x-1.5 font-mono shadow-xs cursor-pointer"
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <Activity className="w-3.5 h-3.5 animate-spin" />
+                      <span>ANALYZING</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>ANALYZE</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Feedback Banner (Error / Warning / Info) */}
+              {inputFeedback && (
+                <div className={`mt-2.5 p-2.5 rounded-lg border text-xs flex items-start gap-2 animate-in fade-in ${
+                  inputFeedback.type === 'error'
+                    ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+                    : inputFeedback.type === 'warning'
+                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                    : 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200'
+                }`}>
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{inputFeedback.message}</span>
+                </div>
+              )}
+
+              {/* Disambiguation Prompt */}
+              {disambiguation && (
+                <div className="mt-2.5 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs animate-in fade-in">
+                  <div className="font-semibold text-blue-900 dark:text-blue-200 mb-1.5 flex items-center gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span>{disambiguation.question}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {disambiguation.options.map((opt, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setDisambiguation(null);
+                          setQueryInput(opt);
+                          onSearch(opt);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-blue-300 dark:border-blue-700 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-500 text-slate-800 dark:text-zinc-200 text-xs font-medium transition-all cursor-pointer shadow-xs"
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </form>
 
-            {/* Suggestion Chips */}
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center space-x-2 overflow-x-auto no-scrollbar text-xs">
-              <span className="text-[10px] font-mono text-slate-500 dark:text-zinc-500 uppercase tracking-wider shrink-0 font-medium">
-                Preset Intel:
-              </span>
-              {suggestionChips.map((chip, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => onSearch(chip.query)}
-                  disabled={isAnalyzing}
-                  className={`shrink-0 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all font-sans shadow-xs ${chip.color}`}
-                >
-                  {chip.label}
-                </button>
-              ))}
+            {/* Try Asking Examples */}
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
+              <div className="text-[10px] font-mono text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2 font-medium">
+                Try Asking:
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {tryAskingExamples.map((ex, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleChipClick(ex.query)}
+                    disabled={isAnalyzing}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800/80 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-300 dark:hover:border-blue-700 border border-slate-200 dark:border-zinc-700 text-[11px] text-slate-700 dark:text-zinc-300 font-medium transition-all cursor-pointer"
+                  >
+                    {ex.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

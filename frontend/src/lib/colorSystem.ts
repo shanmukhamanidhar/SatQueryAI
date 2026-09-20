@@ -111,19 +111,43 @@ export const CATEGORY_COLOR_SYSTEM: Record<CategoryKey, CategoryColorConfig> = {
 export function resolveCategoryKey(categoryStr: string): CategoryKey {
   const c = (categoryStr || '').toLowerCase().trim();
   
-  // 1. Deforestation / Canopy Loss / Tree Loss (Red)
+  // 1. Deforestation / Canopy Loss / Disturbance (Red #ef4444)
+  // Must be strictly for negative canopy loss/disturbance/clearing
   if (
     c.includes('deforest') ||
     c.includes('canopy loss') ||
     c.includes('tree loss') ||
-    (c.includes('veg') && c.includes('loss')) ||
-    (c.includes('loss') && !c.includes('water')) ||
-    c.includes('clearing')
+    c.includes('forest loss') ||
+    c.includes('clearing') ||
+    (c.includes('loss') && !c.includes('water') && !c.includes('urban') && !c.includes('gain') && !c.includes('growth'))
   ) {
     return 'deforestation';
   }
 
-  // 2. Water / Hydrology / Dynamics (Blue)
+  // 2. Vegetation Growth / Regrowth / Greening / Canopy Health / Crops / Agriculture / Biomass (Emerald Green #10b981)
+  // Prioritized so all positive vegetation dynamics, crops, and agriculture map to Green
+  if (
+    c.includes('vegetation') ||
+    c.includes('regrowth') ||
+    c.includes('growth') ||
+    c.includes('greening') ||
+    c.includes('green') ||
+    c.includes('crop') ||
+    c.includes('cropland') ||
+    c.includes('agriculture') ||
+    c.includes('agri') ||
+    c.includes('farm') ||
+    c.includes('gain') ||
+    c.includes('biomass') ||
+    c.includes('canopy') ||
+    c.includes('forest') ||
+    c.includes('plantation') ||
+    c.includes('afforestation')
+  ) {
+    return 'vegetation';
+  }
+
+  // 3. Water / Hydrology / Lakes / Rivers / Reservoirs (Blue #0284c7)
   if (
     c.includes('water') ||
     c.includes('hydro') ||
@@ -131,14 +155,16 @@ export function resolveCategoryKey(categoryStr: string): CategoryKey {
     c.includes('river') ||
     c.includes('reservoir') ||
     c.includes('ocean') ||
+    c.includes('sea') ||
     c.includes('coastal') ||
     c.includes('wetland') ||
-    c.includes('dynamic')
+    c.includes('flood') ||
+    (c.includes('dynamic') && !c.includes('urban') && !c.includes('veg'))
   ) {
     return 'water';
   }
 
-  // 3. Construction / Urban Development / Built Environment (Orange)
+  // 4. Urban / Built-up / Construction / Infrastructure (Orange #f97316)
   if (
     c.includes('urban') ||
     c.includes('built') ||
@@ -147,24 +173,28 @@ export function resolveCategoryKey(categoryStr: string): CategoryKey {
     c.includes('infrastructure') ||
     c.includes('concrete') ||
     c.includes('pavement') ||
+    c.includes('asphalt') ||
     c.includes('road') ||
-    c.includes('development')
+    c.includes('building') ||
+    (c.includes('development') && !c.includes('veg') && !c.includes('crop'))
   ) {
     return 'urban';
   }
 
-  // 4. Bare Soil / Barren Ground (Amber)
+  // 5. Bare Soil / Barren Ground (Amber #d97706)
   if (
     c.includes('bare') ||
     c.includes('soil') ||
     c.includes('sand') ||
     c.includes('rock') ||
-    c.includes('barren')
+    c.includes('barren') ||
+    c.includes('quarry') ||
+    c.includes('excavation')
   ) {
     return 'bare';
   }
 
-  // 5. All vegetation growth, crops, regrowth, canopy, forest default to vegetation (Green)
+  // Fallback default is vegetation (Green #10b981)
   return 'vegetation';
 }
 
@@ -210,6 +240,61 @@ export function getCategoryTextClass(categoryStr: string): string {
 
 export function getCategoryBgClass(categoryStr: string): string {
   return getCategoryConfig(categoryStr).bgClass;
+}
+
+export function getCategoryHex(cat: string): string {
+  return getCategoryColor(cat);
+}
+
+// ---------------------------------------------------------------------------
+// Hotspot Severity System (Deterministic criteria based on physical area & index delta)
+// ---------------------------------------------------------------------------
+export interface HotspotSeverity {
+  level: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  color: string;
+  bg: string;
+  border: string;
+  criteria: string;
+}
+
+export function calculateHotspotSeverity(areaHa: number, deltaNdvi: number = 0, deltaNdbi: number = 0): HotspotSeverity {
+  const absNdvi = Math.abs(deltaNdvi);
+  const absNdbi = Math.abs(deltaNdbi);
+
+  if (areaHa >= 150 || absNdvi >= 0.30 || absNdbi >= 0.25) {
+    return {
+      level: 'CRITICAL',
+      color: '#ef4444',
+      bg: 'rgba(239, 68, 68, 0.15)',
+      border: 'rgba(239, 68, 68, 0.4)',
+      criteria: 'Area ≥ 150 ha or |ΔIndex| ≥ 0.25 (Major physical land transformation)'
+    };
+  }
+  if (areaHa >= 50 || absNdvi >= 0.20 || absNdbi >= 0.18) {
+    return {
+      level: 'HIGH',
+      color: '#f97316',
+      bg: 'rgba(249, 115, 22, 0.15)',
+      border: 'rgba(249, 115, 22, 0.4)',
+      criteria: 'Area ≥ 50 ha or |ΔIndex| ≥ 0.18 (Substantial land surface shift)'
+    };
+  }
+  if (areaHa >= 15 || absNdvi >= 0.10 || absNdbi >= 0.10) {
+    return {
+      level: 'MODERATE',
+      color: '#eab308',
+      bg: 'rgba(234, 179, 8, 0.15)',
+      border: 'rgba(234, 179, 8, 0.4)',
+      criteria: 'Area ≥ 15 ha or |ΔIndex| ≥ 0.10 (Measurable transition)'
+    };
+  }
+  return {
+    level: 'LOW',
+    color: '#10b981',
+    bg: 'rgba(16, 185, 129, 0.15)',
+    border: 'rgba(16, 185, 129, 0.4)',
+    criteria: 'Area < 15 ha (Localized surface variation)'
+  };
 }
 
 export function getCategoryRgb(categoryStr: string): string {

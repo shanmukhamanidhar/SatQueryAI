@@ -38,7 +38,9 @@ from models.schemas import (
     GeocodeRequest,
     VisualLayers,
     YearImageRequest,
-    YearImageResponse
+    YearImageResponse,
+    QueryParseRequest,
+    QueryParseResponse
 )
 from services.nlp_parser import parse_nlp_intent
 from services.geocoding import resolve_location, bbox_to_geojson_polygon
@@ -137,21 +139,90 @@ async def api_analyze(req: AnalyzeRequest):
     logger.info(f"Starting analysis [{analysis_id}] for query: '{req.query}'")
 
     # 1. Natural Language Understanding
-    intent = await parse_nlp_intent(req.query)
-    target_loc_name = req.location or intent["location"]
+    prev_ctx = None
+    if req.previous_location:
+        prev_ctx = {
+            "location": req.previous_location,
+            "start_year": req.previous_start_year,
+            "end_year": req.previous_end_year
+        }
+    intent = await parse_nlp_intent(req.query, previous_context=prev_ctx)
+
+    if not intent.get("is_earth_observation", True):
+        raise HTTPException(
+            status_code=400,
+            detail=intent.get("rejection_reason", "SatQueryAI is designed for satellite and Earth-observation analysis. Try asking about environmental, land-use, water, vegetation, or urban changes for a location.")
+        )
+
+    if intent.get("is_ambiguous"):
+        opts = ", ".join(intent.get("disambiguation_options", []))
+        q = intent.get("clarification_question", "Which location do you mean?")
+        raise HTTPException(
+            status_code=400,
+            detail=f"{q} Options: {opts}"
+        )
+
+    target_loc_name = req.location or intent.get("location")
+    if not target_loc_name and not req.aoi_geojson:
+        raise HTTPException(
+            status_code=400,
+            detail="SatQueryAI couldn't resolve this location. Try a city, state, country, region, river, lake, or other geographic area."
+        )
+
     start_year = int(req.start_date.split("-")[0]) if req.start_date else intent["start_year"]
     end_year = int(req.end_date.split("-")[0]) if req.end_date else intent["end_year"]
 
     # 2. Location & AOI Resolution
-    try:
-        loc_info = await resolve_location(target_loc_name)
-    except Exception as e:
-        logger.warning(f"Could not resolve '{target_loc_name}': {e}. Trying fallback coordinate search.")
-        raise HTTPException(status_code=400, detail=f"Location resolution failed: {e}")
-
-    # Use user-supplied custom AOI polygon if provided
+    loc_info = None
     if req.aoi_geojson:
-        loc_info.geometry = req.aoi_geojson
+        try:
+            geom = req.aoi_geojson.get("geometry", req.aoi_geojson) if isinstance(req.aoi_geojson, dict) else {}
+            coords = geom.get("coordinates", []) if isinstance(geom, dict) else []
+            flat_pts = []
+            def extract_pts(c):
+                if isinstance(c, (list, tuple)):
+                    if len(c) >= 2 and isinstance(c[0], (int, float)) and isinstance(c[1], (int, float)):
+                        flat_pts.append((float(c[0]), float(c[1])))
+                    else:
+                        for sub in c:
+                            extract_pts(sub)
+            extract_pts(coords)
+            if flat_pts:
+                min_lon = min(p[0] for p in flat_pts)
+                min_lat = min(p[1] for p in flat_pts)
+                max_lon = max(p[0] for p in flat_pts)
+                max_lat = max(p[1] for p in flat_pts)
+                if abs(max_lon - min_lon) < 0.005:
+                    mid_lon = (min_lon + max_lon) / 2
+                    min_lon, max_lon = mid_lon - 0.005, mid_lon + 0.005
+                if abs(max_lat - min_lat) < 0.005:
+                    mid_lat = (min_lat + max_lat) / 2
+                    min_lat, max_lat = mid_lat - 0.005, mid_lat + 0.005
+                c_lon = round((min_lon + max_lon) / 2, 6)
+                c_lat = round((min_lat + max_lat) / 2, 6)
+                loc_info = LocationInfo(
+                    name=req.location or "Drawn Area of Interest",
+                    display_name=f"Custom AOI ({c_lat:.3f}°N, {c_lon:.3f}°E)",
+                    latitude=c_lat,
+                    longitude=c_lon,
+                    bounding_box=[round(min_lon, 6), round(min_lat, 6), round(max_lon, 6), round(max_lat, 6)],
+                    geometry=req.aoi_geojson,
+                    location_type="custom_aoi",
+                    area_description=f"Custom defined observation polygon at {c_lat:.3f}°N, {c_lon:.3f}°E"
+                )
+                logger.info(f"Resolved custom user-drawn AOI directly: bbox={loc_info.bounding_box}")
+        except Exception as ex:
+            logger.warning(f"Failed to parse custom aoi_geojson directly: {ex}")
+
+    if loc_info is None:
+        try:
+            loc_info = await resolve_location(target_loc_name)
+        except Exception as e:
+            logger.warning(f"Could not resolve '{target_loc_name}': {e}.")
+            raise HTTPException(
+                status_code=400,
+                detail=f"SatQueryAI couldn't resolve '{target_loc_name}'. Try a city, state, country, region, river, lake, or other geographic area."
+            )
 
     bbox = loc_info.bounding_box
     total_aoi_ha = calculate_aoi_hectares(bbox)
@@ -243,6 +314,7 @@ async def api_analyze(req: AnalyzeRequest):
     )
 
     # 8. Morphological Vector Change Polygon Extraction
+    loc_id = getattr(loc_info, "id", None) or (loc_info.name.lower().replace(" ", "_") if loc_info.name else "custom")
     change_regions = extract_change_polygons(
         delta_ndbi=delta_ndbi,
         delta_ndvi=delta_ndvi,
@@ -250,7 +322,9 @@ async def api_analyze(req: AnalyzeRequest):
         cls_before=cls_before,
         cls_after=cls_after,
         bbox=bbox,
-        total_aoi_ha=total_aoi_ha
+        total_aoi_ha=total_aoi_ha,
+        location_id=loc_id,
+        location_name=loc_info.name
     )
 
     # 9. Explainable Multi-Factor Confidence Evaluation
@@ -336,7 +410,8 @@ async def api_analyze(req: AnalyzeRequest):
         visual_layers=visual_layers,
         timeline=timeline,
         confidence=confidence,
-        ai_summary=ai_summary
+        ai_summary=ai_summary,
+        query_understanding=intent
     )
 
     # Cache canonical context
@@ -345,6 +420,32 @@ async def api_analyze(req: AnalyzeRequest):
     logger.info(f"Analysis [{analysis_id}] completed in {duration_sec:.2f}s.")
 
     return analysis_context
+
+@app.post("/api/query-parse", response_model=QueryParseResponse)
+async def api_query_parse(req: QueryParseRequest):
+    """
+    Parses a natural language Earth-observation query into structured intent,
+    target location, date boundaries, and focus indicators.
+    """
+    res = await parse_nlp_intent(req.query, previous_context=req.previous_context)
+    return QueryParseResponse(
+        is_earth_observation=res.get("is_earth_observation", True),
+        rejection_reason=res.get("rejection_reason"),
+        is_ambiguous=res.get("is_ambiguous", False),
+        clarification_question=res.get("clarification_question"),
+        disambiguation_options=res.get("disambiguation_options", []),
+        location=res.get("location"),
+        target_type=res.get("target_type", "location"),
+        start_year=res.get("start_year", 2021),
+        end_year=res.get("end_year", 2026),
+        focus_indicator=res.get("focus_indicator", "all"),
+        analysis_type=res.get("analysis_type", "multi_year_change"),
+        user_intent=res.get("user_intent", "compare"),
+        defaulted_dates=res.get("defaulted_dates", False),
+        year_warning=res.get("year_warning"),
+        query_text=res.get("query_text", req.query),
+        data_used=res.get("data_used", {})
+    )
 
 @app.get("/api/analysis/{analysis_id}", response_model=AnalysisContext)
 def get_analysis(analysis_id: str):
@@ -370,7 +471,8 @@ async def api_chat(req: ChatRequest):
     resp = await answer_conversational_query(
         analysis_context=ctx_dict,
         user_message=req.message,
-        chat_history=req.history or []
+        chat_history=req.history or [],
+        language=req.language or "en"
     )
     return resp
 

@@ -737,32 +737,123 @@ _INDIA_CATALOG["pondicherry"] = _INDIA_CATALOG["puducherry"]
 _INDIA_CATALOG["orissa"] = _INDIA_CATALOG["odisha"]
 _INDIA_CATALOG["uttaranchal"] = _INDIA_CATALOG["uttarakhand"]
 
+STATE_ADMINISTRATIVE_BBOXES: Dict[str, List[float]] = {
+    "andhra_pradesh": [76.7600, 12.6200, 84.7700, 19.1500],
+    "arunachal_pradesh": [91.5000, 26.6300, 97.4200, 29.5000],
+    "assam": [89.6900, 24.1300, 96.0200, 27.9700],
+    "bihar": [83.3200, 24.2800, 88.3000, 27.5200],
+    "chhattisgarh": [80.2400, 17.7800, 84.4000, 24.1100],
+    "goa": [73.6800, 14.9000, 74.3400, 15.8000],
+    "gujarat": [68.1200, 20.1200, 74.4800, 24.7100],
+    "haryana": [74.4600, 27.6500, 77.6000, 30.9200],
+    "himachal_pradesh": [75.7900, 30.3800, 79.0700, 33.2600],
+    "jharkhand": [83.3200, 21.9700, 87.9500, 25.3500],
+    "karnataka": [74.0900, 11.5900, 78.5900, 18.4500],
+    "kerala": [74.8600, 8.2900, 77.4100, 12.7900],
+    "madhya_pradesh": [74.0400, 21.0800, 82.8100, 26.8700],
+    "maharashtra": [72.6000, 15.6000, 80.8900, 22.0300],
+    "manipur": [93.0300, 23.8300, 94.7800, 25.6800],
+    "meghalaya": [89.8200, 25.0300, 92.8000, 26.1200],
+    "mizoram": [92.2600, 21.9700, 93.4400, 24.5200],
+    "nagaland": [93.3300, 25.1000, 95.2500, 27.0700],
+    "odisha": [81.3800, 17.8200, 87.5200, 22.5700],
+    "punjab": [73.8800, 29.5300, 76.9300, 32.5000],
+    "rajasthan": [69.5000, 23.0500, 78.2800, 30.2000],
+    "sikkim": [88.0100, 27.0800, 88.9200, 28.1300],
+    "tamil_nadu": [76.2400, 8.0800, 80.3500, 13.5600],
+    "telangana": [77.2400, 15.8300, 81.3200, 19.9200],
+    "tripura": [91.1500, 22.9400, 92.3400, 24.5300],
+    "uttar_pradesh": [77.1000, 23.8700, 84.6400, 30.4000],
+    "uttarakhand": [77.5800, 28.7200, 81.0400, 31.4600],
+    "west_bengal": [85.8200, 21.5200, 89.8800, 27.2200],
+    "andaman_nicobar": [92.2000, 6.7500, 94.0000, 13.7000],
+    "chandigarh": [76.7100, 30.6800, 76.8400, 30.7900],
+    "dadra_nagar_haveli_daman_diu": [72.8000, 20.0600, 73.2300, 20.7300],
+    "delhi": [76.8400, 28.4000, 77.3500, 28.8800],
+    "jammu_kashmir": [73.7600, 32.2800, 76.7900, 35.1500],
+    "ladakh": [75.5000, 32.5000, 79.5000, 36.0000],
+    "lakshadweep": [71.5000, 8.2000, 74.0000, 12.5000],
+    "puducherry": [79.7500, 11.8500, 79.8800, 12.0200]
+}
+
+STATE_ADMINISTRATIVE_GEOMETRIES: Dict[str, Dict[str, Any]] = {
+    "andhra_pradesh": {
+        "type": "Polygon",
+        "coordinates": [[
+            [76.7600, 14.1500],
+            [77.1000, 13.7500],
+            [78.2000, 13.0000],
+            [79.2000, 13.1500],
+            [79.8000, 13.4000],
+            [80.1500, 14.0000],
+            [80.3000, 15.5000],
+            [81.0000, 16.2000],
+            [82.2000, 16.9000],
+            [83.3000, 17.7000],
+            [84.7700, 19.1500],
+            [83.8000, 18.8000],
+            [83.2000, 18.2000],
+            [81.5000, 17.7000],
+            [80.5000, 17.1000],
+            [79.5000, 16.5000],
+            [78.2000, 16.0000],
+            [77.4000, 15.2000],
+            [76.7600, 14.1500]
+        ]]
+    },
+    "andaman_nicobar": {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [[[92.7, 11.5], [93.0, 11.5], [93.0, 13.5], [92.7, 13.5], [92.7, 11.5]]],
+            [[[93.5, 6.8], [94.0, 6.8], [94.0, 9.3], [93.5, 9.3], [93.5, 6.8]]]
+        ]
+    },
+    "lakshadweep": {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [[[71.8, 10.5], [72.5, 10.5], [72.5, 11.2], [71.8, 11.2], [71.8, 10.5]]],
+            [[[72.8, 8.2], [73.2, 8.2], [73.2, 8.6], [72.8, 8.6], [72.8, 8.2]]]
+        ]
+    }
+}
+
 def get_india_location(query: str) -> Optional[LocationInfo]:
     """
     Looks up an Indian State or Union Territory from the authoritative registry.
-    Returns LocationInfo with accurate bounding box, centroid, and authentic landmarks.
+    Returns LocationInfo with authoritative state-level administrative bounding box, centroid, and authentic landmarks.
     """
+    import re
     clean = query.lower().strip()
+
     # Strip common query affixes
-    for prefix in ["analyze ", "show changes in ", "changes in ", "state of ", "ut of "]:
+    for prefix in ["analyze ", "show changes in ", "changes in ", "state of ", "ut of ", "union territory of "]:
         if clean.startswith(prefix):
             clean = clean[len(prefix):].strip()
-    clean = clean.replace(", india", "").strip()
+
+    # Strip temporal ranges: e.g. 'between 2021 and 2026', 'from 2020 to 2026', '2021-2026', etc.
+    clean = re.sub(r'\b(?:between|from)\s+\d{4}\s+(?:and|to)\s+\d{4}\b', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b\d{4}\s*[-–]\s*\d{4}\b', '', clean)
+    clean = re.sub(r'\b(?:in|during|for)\s+\d{4}\b', '', clean, flags=re.IGNORECASE)
+    clean = clean.replace(', india', '').replace(' india', '').strip()
+    clean = re.sub(r'\s+', ' ', clean).strip()
 
     item = _INDIA_CATALOG.get(clean)
     if not item:
-        # Check if clean matches any state name substring
-        for k, v in _INDIA_CATALOG.items():
-            if clean == k or (len(clean) >= 4 and clean in k):
-                item = v
+        # Check catalog keys where key is inside clean or clean inside key
+        # Sort keys by length descending so longer specific names match first (e.g. 'andaman and nicobar islands' before 'andaman')
+        sorted_keys = sorted(_INDIA_CATALOG.keys(), key=lambda x: len(x), reverse=True)
+        for k in sorted_keys:
+            if k == clean or (len(k) >= 3 and k in clean) or (len(clean) >= 4 and clean in k):
+                item = _INDIA_CATALOG[k]
                 break
 
     if not item:
         return None
 
-    bbox = item["bbox"]
+    # Use authoritative administrative bounding box
+    bbox = STATE_ADMINISTRATIVE_BBOXES.get(item["id"], item["bbox"])
     w, s, e, n = bbox
-    poly = {
+    poly = STATE_ADMINISTRATIVE_GEOMETRIES.get(item["id"]) or {
         "type": "Polygon",
         "coordinates": [[
             [w, s],
@@ -783,7 +874,10 @@ def get_india_location(query: str) -> Optional[LocationInfo]:
         for lm in item["landmarks"]
     ]
 
+    area_description = f"State Administrative AOI (Complete {item['name']} Boundary & Regional Terrain)" if item["type"] == "state" else f"Union Territory Administrative AOI ({item['name']})"
+
     return LocationInfo(
+        id=item["id"],
         name=item["name"],
         display_name=f"{item['name']}, India",
         latitude=item["lat"],
@@ -792,7 +886,7 @@ def get_india_location(query: str) -> Optional[LocationInfo]:
         country="India",
         admin_region=item["name"],
         location_type="state" if item["type"] == "state" else "union_territory",
-        area_description=item["description"],
+        area_description=area_description,
         geometry=poly,
         landmarks=landmarks
     )

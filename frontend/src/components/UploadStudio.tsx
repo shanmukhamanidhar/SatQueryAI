@@ -26,7 +26,9 @@ import {
   SplitSquareVertical,
   Columns,
   Flame,
-  HelpCircle
+  HelpCircle,
+  Satellite,
+  X
 } from 'lucide-react';
 import { 
   uploadSingleImage, 
@@ -97,6 +99,8 @@ export const UploadStudio: React.FC<{
   const [chatInput, setChatInput] = useState<string>('');
   const [isChatSending, setIsChatSending] = useState<boolean>(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const chatLogContainerRef = useRef<HTMLDivElement>(null);
+  const compareChatLogContainerRef = useRef<HTMLDivElement>(null);
 
   // Load sample presets on mount
   useEffect(() => {
@@ -107,9 +111,15 @@ export const UploadStudio: React.FC<{
       .finally(() => setIsLoadingSamples(false));
   }, []);
 
-  // Scroll chat to bottom when new messages arrive
+  // Scroll chat messages to bottom within their own isolated scroll container
+  // Strictly prevent window or page scroll jumps
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatLogContainerRef.current) {
+      chatLogContainerRef.current.scrollTop = chatLogContainerRef.current.scrollHeight;
+    }
+    if (compareChatLogContainerRef.current) {
+      compareChatLogContainerRef.current.scrollTop = compareChatLogContainerRef.current.scrollHeight;
+    }
   }, [chatMessages]);
 
   // Autoplay loop for timeline
@@ -509,6 +519,32 @@ export const UploadStudio: React.FC<{
               <span>3. Multiple Timeline</span>
             </button>
           </div>
+
+          <div className="flex items-center space-x-2 self-start md:self-auto">
+            {onOpenLiveStudio && (
+              <button
+                type="button"
+                onClick={onOpenLiveStudio}
+                className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-mono font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                title="Return to Live Planetary Satellite Studio"
+              >
+                <Satellite className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>LIVE STUDIO</span>
+              </button>
+            )}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Restore map"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-slate-200 text-xs font-mono font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                title="Exit Upload Studio and return to Home (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>RESTORE (ESC)</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Quick Sample Presets Ribbon */}
@@ -875,7 +911,7 @@ export const UploadStudio: React.FC<{
                 </div>
 
                 {/* Message Log */}
-                <div className="flex-1 overflow-y-auto space-y-2.5 py-3 pr-1 max-h-[220px] text-xs">
+                <div ref={chatLogContainerRef} className="flex-1 overflow-y-auto space-y-2.5 py-3 pr-1 max-h-[220px] text-xs">
                   {chatMessages.length === 0 ? (
                     <div className="text-center text-slate-400 dark:text-zinc-500 py-6 text-xs font-sans">
                       Upload an image to ask focused questions (e.g., &quot;How much vegetation is present?&quot;).
@@ -1397,7 +1433,7 @@ export const UploadStudio: React.FC<{
                       <Bot className="w-4 h-4 text-orange-500" />
                       <span className="text-xs font-bold">Ask about this comparison</span>
                     </div>
-                    <div className="flex-1 overflow-y-auto space-y-2 py-3 text-xs max-h-[160px]">
+                    <div ref={compareChatLogContainerRef} className="flex-1 overflow-y-auto space-y-2 py-3 text-xs max-h-[160px]">
                       {chatMessages.map((m, i) => (
                         <div
                           key={i}

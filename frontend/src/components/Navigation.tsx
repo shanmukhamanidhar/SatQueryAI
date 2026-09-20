@@ -19,6 +19,8 @@ import {
   Upload
 } from 'lucide-react';
 import { SatQueryLogo } from './SatQueryLogo';
+import { LanguageSelector } from './LanguageSelector';
+import { useLanguage } from '../i18n/LanguageContext';
 import { AnalysisContext } from '../lib/types';
 
 interface NavigationProps {
@@ -36,6 +38,9 @@ interface NavigationProps {
   onScrollToSection?: (sectionId: string) => void;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  onOpenIndiaOverview?: () => void;
+  onOpenStory?: () => void;
+  onOpenAlerts?: () => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -53,7 +58,11 @@ export const Navigation: React.FC<NavigationProps> = ({
   onScrollToSection,
   theme = 'light',
   onToggleTheme,
+  onOpenIndiaOverview,
+  onOpenStory,
+  onOpenAlerts,
 }) => {
+  const { t } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
 
@@ -65,12 +74,12 @@ export const Navigation: React.FC<NavigationProps> = ({
   };
 
   const navItems = [
-    { id: 'home', label: 'Home', action: () => { setCurrentView('home'); onScrollToSection?.('hero'); } },
-    { id: 'features', label: 'Capabilities', action: () => { if (currentView !== 'home') setCurrentView('home'); setTimeout(() => onScrollToSection?.('features-section'), 100); } },
-    { id: 'live-earth', label: 'Live Studio', action: () => { if (currentView === 'home') { onScrollToSection?.('live-earth-section'); } else { setCurrentView('studio'); } } },
-    { id: 'upload-studio', label: 'Upload Studio', action: () => { setCurrentView('upload'); } },
-    { id: 'environmental', label: 'Environmental', action: () => { if (currentView !== 'home') setCurrentView('home'); setTimeout(() => onScrollToSection?.('environmental-section'), 100); } },
-    { id: 'monitoring', label: 'Hotspots', action: () => { if (currentView !== 'home') setCurrentView('home'); setTimeout(() => onScrollToSection?.('monitoring-section'), 100); } },
+    { id: 'home', label: t('nav.home', 'Home'), action: () => { setCurrentView('home'); onScrollToSection?.('hero'); } },
+    { id: 'live-earth', label: t('nav.studio', 'Live Studio'), action: () => { if (currentView === 'home') { onScrollToSection?.('live-earth-section'); } else { setCurrentView('studio'); } } },
+    { id: 'upload-studio', label: t('nav.upload', 'Upload Studio'), action: () => { if (currentView !== 'home') setCurrentView('home'); setTimeout(() => onScrollToSection?.('upload-studio-section'), 100); } },
+    { id: 'environmental', label: t('nav.environmental', 'Environmental'), action: () => { if (currentView !== 'home') setCurrentView('home'); setTimeout(() => onScrollToSection?.('environmental-section'), 100); } },
+    { id: 'monitoring', label: t('nav.hotspots', 'Hotspots'), action: () => { if (currentView !== 'home') setCurrentView('home'); setTimeout(() => onScrollToSection?.('monitoring-section'), 100); } },
+    { id: 'india-overview', label: t('nav.india', 'India 🇮🇳'), action: () => onOpenIndiaOverview?.() },
   ];
 
   const quickPrompts = [
@@ -187,182 +196,237 @@ export const Navigation: React.FC<NavigationProps> = ({
             </div>
           </form>
         ) : (
-          <div className="hidden xl:flex items-center space-x-1 min-w-0">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={item.action}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800/80 whitespace-nowrap"
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          <nav className="hidden lg:flex items-center space-x-1 shrink-0">
+            {navItems.map((item) => {
+              const isActive = (item.id === 'home' && currentView === 'home') ||
+                               (item.id === 'upload-studio' && currentView === 'upload');
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={item.action}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+                    isActive
+                      ? 'bg-slate-100 dark:bg-zinc-800 text-blue-600 dark:text-blue-400 font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800/80'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
         )}
 
-        {/* Right: Theme Toggle, View Switcher, Mode, Provenance, Report */}
-        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0 ml-auto pr-0.5">
-          {/* THEME TOGGLE (Light / Dark Mode) */}
+        {/* Right Action Bar */}
+        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0 ml-auto">
+          {/* Action buttons depending on currentView */}
+          {currentView === 'home' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setCurrentView('studio')}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold font-mono tracking-wide transition-all shadow-xs flex items-center space-x-1.5 shrink-0 cursor-pointer"
+                title="Launch full-screen satellite analysis studio"
+              >
+                <Layers className="w-3.5 h-3.5 shrink-0" />
+                <span>STUDIO</span>
+                <ArrowRight className="w-3 h-3 shrink-0" />
+              </button>
+              {activeContext && (
+                <button
+                  type="button"
+                  onClick={onOpenReport}
+                  className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 text-xs font-semibold transition-all shadow-xs cursor-pointer"
+                  title="Download Executive Analysis Report"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span>Report</span>
+                </button>
+              )}
+            </>
+          ) : currentView === 'upload' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setCurrentView('home')}
+                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-semibold font-mono transition-all flex items-center space-x-1.5 shadow-xs shrink-0 cursor-pointer"
+                title="Return to planetary overview"
+              >
+                <Globe2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span>OVERVIEW</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentView('studio')}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold font-mono tracking-wide transition-all shadow-xs flex items-center space-x-1.5 shrink-0 cursor-pointer"
+                title="Launch Live Satellite Studio"
+              >
+                <Layers className="w-3.5 h-3.5 shrink-0" />
+                <span>STUDIO</span>
+                <ArrowRight className="w-3 h-3 shrink-0" />
+              </button>
+            </>
+          ) : (
+            /* STUDIO VIEW: studio controls */
+            <>
+              {/* Back to Overview */}
+              <button
+                type="button"
+                onClick={() => setCurrentView('home')}
+                className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-semibold font-mono transition-all flex items-center space-x-1.5 shadow-xs shrink-0 cursor-pointer"
+                title="Return to planetary overview landing page"
+              >
+                <Globe2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span className="hidden sm:inline">OVERVIEW</span>
+              </button>
+
+              {/* Upload switch */}
+              <button
+                type="button"
+                onClick={() => setCurrentView('upload')}
+                className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold font-mono tracking-wide transition-all shadow-xs flex items-center space-x-1.5 shrink-0 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 cursor-pointer"
+                title="Upload custom satellite images for AI analysis"
+              >
+                <Upload className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden md:inline">UPLOAD</span>
+              </button>
+
+              {/* Simple vs Expert */}
+              <div className="hidden xl:flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 text-xs shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setExpertMode(false)}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                    !expertMode 
+                      ? 'bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs' 
+                      : 'text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  Simple
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpertMode(true)}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center space-x-1 ${
+                    expertMode 
+                      ? 'bg-white dark:bg-zinc-800 text-orange-600 dark:text-orange-400 font-semibold shadow-xs' 
+                      : 'text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  <Sliders className="w-3 h-3" />
+                  <span>Expert</span>
+                </button>
+              </div>
+
+              {/* National India Overview */}
+              {onOpenIndiaOverview && (
+                <button
+                  type="button"
+                  onClick={onOpenIndiaOverview}
+                  className="hidden xl:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 text-xs font-semibold font-mono tracking-wide transition-all shadow-xs shrink-0 cursor-pointer"
+                  title="Explore all 28 States & 8 UTs with National Overview & Drilldown"
+                >
+                  <span>🇮🇳</span>
+                  <span>INDIA</span>
+                </button>
+              )}
+
+              {/* Intelligence Story Trigger */}
+              {onOpenStory && (
+                <button
+                  type="button"
+                  onClick={onOpenStory}
+                  disabled={!activeContext}
+                  className="hidden 2xl:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold font-mono tracking-wide transition-all shadow-xs shrink-0 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Read narrative intelligence story of detected changes"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>STORY</span>
+                </button>
+              )}
+
+              {/* Environmental Alerts Trigger */}
+              {onOpenAlerts && (
+                <button
+                  type="button"
+                  onClick={onOpenAlerts}
+                  disabled={!activeContext}
+                  className="hidden 2xl:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-semibold font-mono tracking-wide transition-all shadow-xs shrink-0 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Configure environmental monitoring thresholds & live alerts"
+                >
+                  <Activity className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>ALERTS</span>
+                </button>
+              )}
+
+              {/* Provenance */}
+              <button
+                type="button"
+                onClick={onOpenProvenance}
+                disabled={!activeContext}
+                className="hidden 2xl:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs shrink-0 cursor-pointer"
+                title="Inspect Data Provenance & Copernicus Scenes"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Provenance</span>
+              </button>
+
+              {/* Raw Satellite Comparison */}
+              {onOpenRawSatellite && (
+                <button
+                  type="button"
+                  onClick={onOpenRawSatellite}
+                  className="hidden xl:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold font-mono tracking-wide transition-all shadow-xs shrink-0 cursor-pointer"
+                  title="Compare raw optical satellite images side-by-side"
+                >
+                  <Satellite className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span>RAW</span>
+                </button>
+              )}
+
+              {/* PDF Report Trigger */}
+              <button
+                type="button"
+                onClick={onOpenReport}
+                disabled={!activeContext}
+                className="shrink-0 flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold transition-all shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Download Executive Analysis Report"
+              >
+                <FileText className="w-3.5 h-3.5 shrink-0" />
+                <span className="font-sans font-semibold">{t('nav.report', 'Report')}</span>
+              </button>
+            </>
+          )}
+
+          {/* LANGUAGE SELECTOR */}
+          <LanguageSelector variant="header" />
+
+          {/* THEME TOGGLE (Placed cleanly at far right as an icon button) */}
           {onToggleTheme && (
             <button
               type="button"
               onClick={onToggleTheme}
-              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all shadow-xs bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 shrink-0"
+              className="p-2 rounded-lg border text-xs transition-all shadow-xs bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-200 shrink-0 cursor-pointer flex items-center justify-center"
               title={theme === 'dark' ? 'Switch to Clean White Theme (Light)' : 'Switch to Deep Black Theme (Dark)'}
               aria-label="Toggle theme"
             >
               {theme === 'dark' ? (
-                <>
-                  <Sun className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="hidden sm:inline font-mono text-[11px]">LIGHT</span>
-                </>
+                <Sun className="w-4 h-4 text-amber-400 shrink-0" />
               ) : (
-                <>
-                  <Moon className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                  <span className="hidden sm:inline font-mono text-[11px]">DARK</span>
-                </>
+                <Moon className="w-4 h-4 text-slate-700 dark:text-zinc-300 shrink-0" />
               )}
             </button>
           )}
-
-          {/* Primary View Switcher Button (Home vs Studio) */}
-          {currentView === 'home' ? (
-            <button
-              type="button"
-              onClick={() => setCurrentView('studio')}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold font-mono tracking-wide transition-all shadow-xs flex items-center space-x-1.5 shrink-0"
-              title="Launch full-screen satellite analysis studio"
-            >
-              <Layers className="w-3.5 h-3.5 shrink-0" />
-              <span>STUDIO</span>
-              <ArrowRight className="w-3 h-3 shrink-0" />
-            </button>
-          ) : currentView === 'studio' ? (
-            <button
-              type="button"
-              onClick={() => setCurrentView('home')}
-              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-semibold font-mono transition-all flex items-center space-x-1.5 shadow-xs shrink-0"
-              title="Return to the planetary overview landing page"
-            >
-              <Globe2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span>OVERVIEW</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setCurrentView('home')}
-              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-semibold font-mono transition-all flex items-center space-x-1.5 shadow-xs shrink-0"
-              title="Return to planetary overview"
-            >
-              <Globe2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span>OVERVIEW</span>
-            </button>
-          )}
-
-          {/* Dedicated Upload Studio Mode Button */}
-          <button
-            type="button"
-            onClick={() => setCurrentView(currentView === 'upload' ? 'home' : 'upload')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold font-mono tracking-wide transition-all shadow-xs flex items-center space-x-1.5 shrink-0 ${
-              currentView === 'upload'
-                ? 'bg-purple-600 hover:bg-purple-700 text-white ring-2 ring-purple-500/40 shadow-sm'
-                : 'bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'
-            }`}
-            title="Upload custom satellite images for AI analysis, comparison & timeline"
-          >
-            <Upload className="w-3.5 h-3.5 shrink-0" />
-            <span>UPLOAD</span>
-          </button>
-
-          {/* Simple vs Expert Mode Pill Switch (Studio view only) */}
-          {currentView === 'studio' && (
-            <div className="hidden lg:flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 text-xs shrink-0">
-              <button
-                type="button"
-                onClick={() => setExpertMode(false)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                  !expertMode 
-                    ? 'bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs' 
-                    : 'text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200'
-                }`}
-              >
-                Simple
-              </button>
-              <button
-                type="button"
-                onClick={() => setExpertMode(true)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center space-x-1 ${
-                  expertMode 
-                    ? 'bg-white dark:bg-zinc-800 text-orange-600 dark:text-orange-400 font-semibold shadow-xs' 
-                    : 'text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200'
-                }`}
-              >
-                <Sliders className="w-3 h-3" />
-                <span>Expert</span>
-              </button>
-            </div>
-          )}
-
-          {/* SIH Walkthrough Button */}
-          {onRunDemo && (
-            <button
-              type="button"
-              onClick={onRunDemo}
-              disabled={isAnalyzing}
-              className="hidden 2xl:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-xs font-mono font-semibold transition-all shadow-xs shrink-0"
-              title="Automated Smart India Hackathon walkthrough for Visakhapatnam"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-ping shrink-0" />
-              <span>SIH DEMO</span>
-            </button>
-          )}
-
-          {/* Evidence Provenance Trigger */}
-          <button
-            type="button"
-            onClick={onOpenProvenance}
-            disabled={!activeContext}
-            className="hidden xl:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs shrink-0"
-            title="Inspect Data Provenance & Copernicus Scenes"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>Provenance</span>
-          </button>
-
-          {/* Raw Satellite Comparison Option */}
-          {onOpenRawSatellite && (
-            <button
-              type="button"
-              onClick={onOpenRawSatellite}
-              className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold font-mono tracking-wide transition-all shadow-xs shrink-0"
-              title="Compare raw optical satellite images side-by-side"
-            >
-              <Satellite className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-              <span className="hidden xl:inline">RAW SATELLITES</span>
-              <span className="xl:hidden">RAW</span>
-            </button>
-          )}
-
-          {/* PDF Report Trigger (Always fully visible, never compressed or cut off) */}
-          <button
-            type="button"
-            onClick={onOpenReport}
-            disabled={!activeContext}
-            className="shrink-0 flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold transition-all shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-            title="Download Executive Analysis Report"
-          >
-            <FileText className="w-3.5 h-3.5 shrink-0" />
-            <span className="font-sans font-semibold">Report</span>
-          </button>
 
           {/* Mobile Menu Toggle */}
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 shrink-0"
+            className="lg:hidden p-2 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 shrink-0 cursor-pointer"
+            aria-label="Toggle navigation menu"
           >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
         </div>
       </div>
@@ -426,6 +490,45 @@ export const Navigation: React.FC<NavigationProps> = ({
               <Upload className="w-4 h-4" />
               <span>Upload Mode (Analyze Custom Images)</span>
             </button>
+            {onOpenIndiaOverview && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenIndiaOverview();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm text-orange-600 dark:text-orange-400 font-bold bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900/40 flex items-center space-x-2"
+              >
+                <span>🇮🇳</span>
+                <span>India Overview (28 States & 8 UTs)</span>
+              </button>
+            )}
+            {onOpenStory && activeContext && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenStory();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/40 flex items-center space-x-2"
+              >
+                <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Satellite Intelligence Story</span>
+              </button>
+            )}
+            {onOpenAlerts && activeContext && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenAlerts();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 flex items-center space-x-2"
+              >
+                <Activity className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>Environmental Alerts & Monitoring</span>
+              </button>
+            )}
             {onOpenRawSatellite && (
               <button
                 type="button"
@@ -441,45 +544,58 @@ export const Navigation: React.FC<NavigationProps> = ({
             )}
           </div>
 
-          <div className="pt-2 border-t border-slate-200 dark:border-zinc-800 flex flex-wrap gap-2">
-            {onRunDemo && (
+          <div className="pt-2 border-t border-slate-200 dark:border-zinc-800 flex flex-col gap-2">
+            <LanguageSelector variant="mobile" />
+            {onToggleTheme && (
               <button
                 type="button"
                 onClick={() => {
-                  onRunDemo();
+                  onToggleTheme();
                   setMobileMenuOpen(false);
                 }}
-                className="w-full py-2 px-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-mono font-bold flex items-center justify-center space-x-2"
+                className="w-full py-2 px-3 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-semibold flex items-center justify-center space-x-2 cursor-pointer"
               >
-                <span>Launch SIH Demo</span>
+                {theme === 'dark' ? (
+                  <>
+                    <Sun className="w-4 h-4 text-amber-400" />
+                    <span>Switch to Light Theme</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-4 h-4 text-slate-700 dark:text-zinc-300" />
+                    <span>Switch to Dark Theme</span>
+                  </>
+                )}
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={() => {
-                onOpenProvenance();
-                setMobileMenuOpen(false);
-              }}
-              disabled={!activeContext}
-              className="flex-1 py-2 px-3 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-medium flex items-center justify-center space-x-1.5 disabled:opacity-40"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Provenance</span>
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenProvenance();
+                  setMobileMenuOpen(false);
+                }}
+                disabled={!activeContext}
+                className="flex-1 py-2 px-3 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-medium flex items-center justify-center space-x-1.5 disabled:opacity-40"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Provenance</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                onOpenReport();
-                setMobileMenuOpen(false);
-              }}
-              disabled={!activeContext}
-              className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 disabled:opacity-40 shadow-xs"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Download Executive Report</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenReport();
+                  setMobileMenuOpen(false);
+                }}
+                disabled={!activeContext}
+                className="flex-1 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 disabled:opacity-40 shadow-xs"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Report</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

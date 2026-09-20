@@ -1,9 +1,25 @@
-import { AnalysisContext, LocationInfo } from './types';
+import { AnalysisContext, LocationInfo, QueryUnderstanding } from './types';
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || '/api';
 
 export async function checkHealth(): Promise<{ status: string; gemini_configured: boolean }> {
   const res = await fetch(`${API_BASE}/health`);
   if (!res.ok) throw new Error('Backend offline');
+  return res.json();
+}
+
+export async function parseQuery(payload: {
+  query: string;
+  previous_context?: any;
+}): Promise<QueryUnderstanding> {
+  const res = await fetch(`${API_BASE}/query-parse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Query understanding failed');
+  }
   return res.json();
 }
 
@@ -26,6 +42,9 @@ export async function runAnalysis(payload: {
   start_date?: string;
   end_date?: string;
   aoi_geojson?: any;
+  previous_location?: string;
+  previous_start_year?: number;
+  previous_end_year?: number;
 }): Promise<AnalysisContext> {
   const res = await fetch(`${API_BASE}/analyze`, {
     method: 'POST',
@@ -43,6 +62,7 @@ export async function sendChatMessage(payload: {
   analysis_id: string;
   message: string;
   history?: Array<{ role: string; content: string }>;
+  language?: string;
 }) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',

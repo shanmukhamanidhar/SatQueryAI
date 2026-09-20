@@ -172,6 +172,9 @@ JSON only, no markdown wrappers.
                 break
             except Exception as me:
                 logger.info(f"Summary model {m_name} note: {me}")
+                err_str = str(me).lower()
+                if "429" in err_str or "quota" in err_str or "rate limit" in err_str:
+                    break
                 continue
 
         if not parsed:
@@ -189,10 +192,27 @@ JSON only, no markdown wrappers.
         logger.warning(f"Gemini API analysis failed: {e}. Falling back to structured heuristic analyst.")
         return generate_evidence_based_summary_heuristic(evidence)
 
+LANGUAGE_NAMES = {
+    "en": "English",
+    "te": "Telugu (తెలుగు)",
+    "hi": "Hindi (हिन्दी)",
+    "ta": "Tamil (தமிழ்)",
+    "kn": "Kannada (ಕನ್ನಡ)",
+    "ml": "Malayalam (മലയാളം)",
+    "mr": "Marathi (मराठी)",
+    "bn": "Bengali (বাংলা)",
+    "gu": "Gujarati (ગુજરાતી)",
+    "pa": "Punjabi (ਪੰਜਾਬੀ)",
+    "or": "Odia (ଓଡ଼ିଆ)",
+    "as": "Assamese (অসমীয়া)",
+    "ur": "Urdu (اردو)",
+}
+
 async def query_gemini_analyst_chat(
     analysis_context: Dict[str, Any],
     user_message: str,
-    chat_history: List[Dict[str, str]]
+    chat_history: List[Dict[str, str]],
+    language: str = "en"
 ) -> Optional[str]:
     """
     Directly asks Google Gemini to answer conversational questions with geospatial expertise.
@@ -218,6 +238,14 @@ async def query_gemini_analyst_chat(
 
         history_lines = "\n".join([f"{h.get('role')}: {h.get('content')}" for h in chat_history[-6:]])
 
+        lang_target = LANGUAGE_NAMES.get(language, "English")
+        lang_instruction = ""
+        if language and language != "en":
+            lang_instruction = (
+                f"\n5. MANDATORY LANGUAGE REQUIREMENT: You MUST formulate your entire response fluently and accurately in {lang_target} "
+                f"using its native script. Do not output in English.\n"
+            )
+
         prompt = f"""You are the AI Geospatial Analyst at SatQueryAI.
 Your primary objective is to ANSWER ONLY WHAT THE USER ASKS.
 
@@ -229,7 +257,7 @@ STRICT CONVERSATIONAL INSTRUCTIONS:
    - If the user asks about water: discuss ONLY water bodies.
    - If the user asks a specific question about a location, index, or date: answer THAT question directly.
 3. NEVER dump the whole analysis summary or recite observation dates, sensor names, or methodology unless explicitly requested.
-4. Keep the response natural, highly focused, professional, and free of filler.
+4. Keep the response natural, highly focused, professional, and free of filler.{lang_instruction}
 
 CURRENT SESSION CONTEXT (Use ONLY what is needed to answer the question):
 - Location: {loc_name}
@@ -258,10 +286,197 @@ Direct, focused answer (answer ONLY what was asked):
         logger.warning(f"Gemini conversational query error: {e}")
     return None
 
+def localize_heuristic_reply(key: str, lang: str, **ctx) -> str:
+    loc_name = ctx.get("loc_name", "the analyzed region")
+    
+    if key == "where_biggest":
+        cat = ctx.get("cat_desc", "change")
+        direction = ctx.get("direction", "central")
+        ha = ctx.get("ha", 0)
+        num = ctx.get("num", 1)
+        d_ndbi = ctx.get("d_ndbi", 0.0)
+        d_ndvi = ctx.get("d_ndvi", 0.0)
+        
+        if lang == "te":
+            return f"అతిపెద్ద {cat} {loc_name}కి **{direction}** దిశలో **{ha} హెక్టార్ల** విస్తీర్ణంలో నమోదైంది (హాట్‌స్పాట్ #{num}, ΔNDBI: **{d_ndbi:+.3f}**, ΔNDVI: **{d_ndvi:+.3f}**). ఇది మీ మ్యాప్‌లో కేంద్రీకరించబడి హైలైట్ చేయబడింది."
+        elif lang == "hi":
+            return f"सबसे बड़ा {cat} {loc_name} के **{direction}** में **{ha} हेक्टेयर** में दर्ज किया गया (हॉटस्पॉट #{num}, ΔNDBI: **{d_ndbi:+.3f}**, ΔNDVI: **{d_ndvi:+.3f}**)। इसे आपके मानचित्र पर केंद्रित और हाइलाइट किया गया है।"
+        elif lang == "ta":
+            return f"மிகப்பெரிய {cat} {loc_name}க்கு **{direction}** திசையில் **{ha} ஹெக்டேர்** பரப்பளவில் பதிவாகியுள்ளது (ஹாட்ஸ்பாட் #{num}, ΔNDBI: **{d_ndbi:+.3f}**, ΔNDVI: **{d_ndvi:+.3f}**). இது வரைபடத்தில் சிறப்பிக்கப்பட்டுள்ளது."
+        elif lang == "kn":
+            return f"ಅತಿದೊಡ್ಡ {cat} {loc_name}ನ **{direction}** ದಿಕ್ಕಿನಲ್ಲಿ **{ha} ಹೆಕ್ಟೇರ್** ಪ್ರದೇಶದಲ್ಲಿ ಪತ್ತೆಯಾಗಿದೆ (ಹಾಟ್‌ಸ್ಪಾಟ್ #{num}, ΔNDBI: **{d_ndbi:+.3f}**, ΔNDVI: **{d_ndvi:+.3f}**)."
+        elif lang == "ml":
+            return f"ഏറ്റവും വലിയ {cat} {loc_name}ന്റെ **{direction}** ഭാഗത്ത് **{ha} ഹെക്ടർ** വിസ്തൃതിയിൽ കണ്ടെത്തി (ഹോട്ട്സ്പോട്ട് #{num})."
+        elif lang == "mr":
+            return f"सर्वात मोठा {cat} {loc_name}च्या **{direction}** दिशेला **{ha} हेक्टर** क्षेत्रात आढळला (हॉटस्पॉट #{num})."
+        elif lang == "bn":
+            return f"সবচেয়ে বড় {cat} {loc_name} এর **{direction}** অংশে **{ha} হেক্টর** জুড়ে সনাক্ত হয়েছে (হটস্পট #{num})."
+        elif lang == "gu":
+            return f"સૌથી મોટો {cat} {loc_name}ની **{direction}** દિશામાં **{ha} હેક્ટર**માં જોવા મળ્યો છે (હોટસ્પોટ #{num})."
+        elif lang == "pa":
+            return f"ਸਭ ਤੋਂ ਵੱਡਾ {cat} {loc_name} ਦੇ **{direction}** ਪਾਸੇ **{ha} ਹੈਕਟੇਅਰ** ਵਿੱਚ ਦਰਜ ਹੋਇਆ (ਹੌਟਸਪੌਟ #{num})."
+        elif lang == "or":
+            return f"ସର୍ବବୃହତ {cat} {loc_name}ର **{direction}** ଦିଗରେ **{ha} ହେକ୍ଟର**ରେ ଚିହ୍ନଟ ହୋଇଛି (ହଟସ୍ପଟ #{num})."
+        elif lang == "as":
+            return f"সৰ্ববৃহৎ {cat} {loc_name}ৰ **{direction}** দিশত **{ha} হেক্টৰ**ত ধৰা পৰিছে (হটস্পট #{num})."
+        elif lang == "ur":
+            return f"{loc_name} کے **{direction}** میں سب سے بڑی تبدیلی **{ha} ہیکٹر** پر واقع ہوئی (ہاٹ اسپاٹ #{num}، ΔNDBI: **{d_ndbi:+.3f}**، ΔNDVI: **{d_ndvi:+.3f}**)。 اسے نقشے پر نمایاں کیا گیا ہے۔"
+        else:
+            return f"The largest detected {cat} occurred **{direction}** of {loc_name}, covering **{ha} hectares** (Hotspot #{num}) with ΔNDBI of **{d_ndbi:+.3f}** and ΔNDVI of **{d_ndvi:+.3f}**. I have centered and highlighted it on your map."
+
+    elif key == "vegetation":
+        loss_ha = ctx.get("loss_ha", 0)
+        gain_ha = ctx.get("gain_ha", 0)
+        mean_d = ctx.get("mean_delta_ndvi", 0.0)
+        count = ctx.get("loss_count", 0)
+
+        if lang == "te":
+            if loss_ha > 0 and gain_ha > 0:
+                return f"{loc_name}లో వృక్షసంపద **{loss_ha:.1f} హెక్టార్ల** క్షీణత మరియు **{gain_ha:.1f} హెక్టార్ల** పునరుత్పత్తిని చూపించింది (సగటు ΔNDVI: **{mean_d:+.3f}**). ప్రభావిత ప్రాంతాలు మ్యాప్‌లో హైలైట్ చేయబడ్డాయి."
+            elif loss_ha > 0:
+                return f"{loc_name}లో వృక్షసంపద **{loss_ha:.1f} హెక్టార్లు** తగ్గింది (సగటు ΔNDVI: **{mean_d:+.3f}**). తగ్గింపు ప్రాంతాలు మ్యాప్‌లో హైలైట్ చేయబడ్డాయి."
+            elif gain_ha > 0:
+                return f"{loc_name}లో వృక్షసంపద **{gain_ha:.1f} హెక్టార్లు** పెరిగింది (సగటు ΔNDVI: **{mean_d:+.3f}**)."
+            return f"{loc_name}లో గణనీయమైన వృక్షసంపద మార్పు నమోదు కాలేదు (సగటు ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "hi":
+            if loss_ha > 0 and gain_ha > 0:
+                return f"{loc_name} में वनस्पति में **{loss_ha:.1f} हेक्टेयर** की कमी और **{gain_ha:.1f} हेक्टेयर** की पुनर्प्राप्ति देखी गई (औसत ΔNDVI: **{mean_d:+.3f}**)। प्रभावित क्षेत्र मानचित्र पर हाइलाइट किए गए हैं।"
+            elif loss_ha > 0:
+                return f"{loc_name} में वनस्पति **{loss_ha:.1f} हेक्टेयर** घटी है (औसत ΔNDVI: **{mean_d:+.3f}**)।"
+            elif gain_ha > 0:
+                return f"{loc_name} में वनस्पति **{gain_ha:.1f} हेक्टेयर** बढ़ी है (औसत ΔNDVI: **{mean_d:+.3f}**)।"
+            return f"{loc_name} में कोई महत्वपूर्ण वनस्पति हानि दर्ज नहीं हुई (औसत ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "ta":
+            return f"{loc_name} பகுதியில் தாவரப் பரப்பு **{loss_ha:.1f} ஹெக்டேர்** குறைந்துள்ளது (சராசரி ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "kn":
+            return f"{loc_name} ನಲ್ಲಿ ಸಸ್ಯವರ್ಗವು **{loss_ha:.1f} ಹೆಕ್ಟೇರ್** ಇಳಿಕೆ ಕಂಡಿದೆ (ಸರಾಸರಿ ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "ml":
+            return f"{loc_name} ൽ സസ്യജാലങ്ങളുടെ വിസ്തൃതി **{loss_ha:.1f} ഹെക്ടർ** കുറഞ്ഞു (ശരാശരി ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "mr":
+            return f"{loc_name} मध्ये वनस्पती आच्छादन **{loss_ha:.1f} हेक्टर** कमी झाले (सरासरी ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "bn":
+            return f"{loc_name} এ উদ্ভিদের আচ্ছাদন **{loss_ha:.1f} হেক্টর** হ্রাস পেয়েছে (গড় ΔNDVI: **{mean_d:+.3f}**)।"
+        elif lang == "gu":
+            return f"{loc_name}માં વનસ્પતિ વિસ્તાર **{loss_ha:.1f} હેક્ટર** ઘટ્યો છે (સરેરાશ ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "pa":
+            return f"{loc_name} ਵਿੱਚ ਬਨਸਪਤੀ ਰਕਬਾ **{loss_ha:.1f} ਹੈਕਟੇਅਰ** ਘਟਿਆ ਹੈ (ਔਸਤ ΔNDVI: **{mean_d:+.3f}**)।"
+        elif lang == "or":
+            return f"{loc_name}ରେ ବନସ୍ପତି କ୍ଷେତ୍ର **{loss_ha:.1f} ହେକ୍ଟର** ହ୍ରାସ ପାଇଛି (ହାରାହାରି ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "as":
+            return f"{loc_name}ত উদ্ভিদৰ আৱৰণ **{loss_ha:.1f} হেক্টৰ** হ্ৰাস পাইছে (গড় ΔNDVI: **{mean_d:+.3f}**)."
+        elif lang == "ur":
+            return f"{loc_name} میں نباتاتی رقبے میں **{loss_ha:.1f} ہیکٹر** کمی واقع ہوئی (اوسط ΔNDVI: **{mean_d:+.3f}**)。"
+        else:
+            if loss_ha > 0 and gain_ha > 0:
+                return f"Vegetation in {loc_name} showed **{loss_ha:.1f} ha** of canopy reduction alongside **{gain_ha:.1f} ha** of regrowth (overall mean ΔNDVI: **{mean_d:+.3f}**). I've highlighted the affected vegetation zones on your map."
+            elif loss_ha > 0:
+                return f"Vegetation in {loc_name} decreased by **{loss_ha:.1f} hectares** across {count} detected zones (mean ΔNDVI: **{mean_d:+.3f}**). The primary reduction clusters are highlighted on your map."
+            elif gain_ha > 0:
+                return f"Vegetation in {loc_name} increased by **{gain_ha:.1f} hectares** (mean ΔNDVI: **{mean_d:+.3f}**). I've highlighted the regrowth zones on your map."
+            return f"No significant vegetation loss was detected in {loc_name} (mean ΔNDVI: **{mean_d:+.3f}**)."
+
+    elif key == "urban_general":
+        total_ha = ctx.get("total_ha", 0)
+        clusters = ctx.get("clusters", 0)
+        mean_d = ctx.get("mean_ndbi", 0.0)
+
+        if lang == "te":
+            return f"{loc_name}లో పట్టణ మరియు నిర్మాణ భూమి **{clusters} క్లస్టర్ల**లో **{total_ha:.1f} హెక్టార్లు** విస్తరించింది (సగటు ΔNDBI: **{mean_d:+.3f}**). ప్రధాన విస్తరణ ప్రాంతాలు మ్యాప్‌లో హైలైట్ చేయబడ్డాయి."
+        elif lang == "hi":
+            return f"{loc_name} में शहरी एवं निर्मित क्षेत्र **{clusters} समूहों** में **{total_ha:.1f} हेक्टेयर** तक बढ़ा (औसत ΔNDBI: **{mean_d:+.3f}**)। मुख्य विस्तार क्षेत्र मानचित्र पर हाइलाइट किए गए हैं।"
+        elif lang == "ta":
+            return f"{loc_name} பகுதியில் நகர்ப்புற நிலம் **{total_ha:.1f} ஹெக்டேர்** பரப்பளவில் விரிவடைந்துள்ளது (சராசரி ΔNDBI: **{mean_d:+.3f}**)."
+        elif lang == "kn":
+            return f"{loc_name} ನಲ್ಲಿ ನಗರ ಮತ್ತು ನಿರ್ಮಾಣ ಪ್ರದೇಶವು **{total_ha:.1f} ಹೆಕ್ಟೇರ್** ವಿಸ್ತರಿಸಿದೆ (ಸರಾಸರಿ ΔNDBI: **{mean_d:+.3f}**)."
+        elif lang == "ml":
+            return f"{loc_name} ൽ നഗര-നിർമ്മാണ ഭൂമി **{total_ha:.1f} ഹെക്ടർ** വിസ്തൃതിയിൽ വർദ്ധിച്ചു (ശരാശരി ΔNDBI: **{mean_d:+.3f}**)."
+        elif lang == "mr":
+            return f"{loc_name} मध्ये शहरी आणि बांधकाम क्षेत्र **{total_ha:.1f} हेक्टर** वाढले (सरासरी ΔNDBI: **{mean_d:+.3f}**)."
+        elif lang == "bn":
+            return f"{loc_name} এ শহুরে ও নির্মাণ এলাকা **{total_ha:.1f} হেক্টর** বৃদ্ধি পেয়েছে (গড় ΔNDBI: **{mean_d:+.3f}**)।"
+        elif lang == "gu":
+            return f"{loc_name}માં શહેરી અને બાંધકામ વિસ્તાર **{total_ha:.1f} હેક્ટર** વધ્યો છે (સરેરાશ ΔNDBI: **{mean_d:+.3f}**)."
+        elif lang == "pa":
+            return f"{loc_name} ਵਿੱਚ ਸ਼ਹਿਰੀ ਅਤੇ ਨਿਰਮਾਣ ਖੇਤਰ **{total_ha:.1f} ਹੈਕਟੇਅਰ** ਵਧਿਆ ਹੈ (ਔਸਤ ΔNDBI: **{mean_d:+.3f}**)।"
+        elif lang == "or":
+            return f"{loc_name}ରେ ସହରୀ ଓ ନିର୍ମାଣ କ୍ଷେତ୍ର **{total_ha:.1f} ହେକ୍ଟର** ବୃଦ୍ଧି ପାଇଛି (ହାରାହାରି ΔNDBI: **{mean_d:+.3f}**)."
+        elif lang == "as":
+            return f"{loc_name}ত নগৰীয়া আৰু নিৰ্মাণ এলেকা **{total_ha:.1f} হেক্টৰ** বৃদ্ধি পাইছে (গড় ΔNDBI: **{mean_d:+.3f}**)."
+        elif lang == "ur":
+            return f"{loc_name} میں شہری اور تعمیراتی رقبہ **{total_ha:.1f} ہیکٹر** تک پھیل گیا (اوسط ΔNDBI: **{mean_d:+.3f}**)。"
+        else:
+            return f"Urban and built-up land expanded by **{total_ha:.1f} hectares** across **{clusters} clusters** in {loc_name} (mean ΔNDBI: **{mean_d:+.3f}**). The primary expansion areas are highlighted on your map."
+
+    elif key == "water_general":
+        total_ha = ctx.get("total_ha", 0)
+        mean_d = ctx.get("mean_ndwi", 0.0)
+
+        if lang == "te":
+            return f"{loc_name}లో ఉపరితల నీరు మరియు తేమ గతిశీలత **{total_ha:.1f} హెక్టార్ల** విస్తీర్ణంలో మారింది (సగటు ΔNDWI: **{mean_d:+.3f}**). సంబంధిత ప్రాంతాలు మ్యాప్‌లో హైలైట్ చేయబడ్డాయి."
+        elif lang == "hi":
+            return f"{loc_name} में सतही जल और आर्द्रता की स्थिति **{total_ha:.1f} हेक्टेयर** में बदली है (औसत ΔNDWI: **{mean_d:+.3f}**)। संबंधित क्षेत्र मानचित्र पर हाइलाइट किए गए हैं।"
+        elif lang == "ta":
+            return f"{loc_name} பகுதியில் நீர்நிலைகள் **{total_ha:.1f} ஹெக்டேர்** பரப்பளவில் மாற்றம் பெற்றுள்ளன (சராசரி ΔNDWI: **{mean_d:+.3f}**)."
+        elif lang == "kn":
+            return f"{loc_name} ನಲ್ಲಿ ಮೇಲ್ಮೈ ನೀರು ಮತ್ತು ತೇವಾಂಶವು **{total_ha:.1f} ಹೆಕ್ಟೇರ್** ಪ್ರದೇಶದಲ್ಲಿ ಬದಲಾಗಿದೆ (ಸರಾಸರಿ ΔNDWI: **{mean_d:+.3f}**)."
+        elif lang == "ml":
+            return f"{loc_name} ൽ ഉപരിതല ജലവും ഈർപ്പവും **{total_ha:.1f} ഹെക്ടർ** വിസ്തൃതിയിൽ വ്യത്യാസപ്പെട്ടു (ശരാശരി ΔNDWI: **{mean_d:+.3f}**)."
+        elif lang == "mr":
+            return f"{loc_name} मध्ये पृष्ठभागावरील पाणी आणि ओलावा **{total_ha:.1f} हेक्टर** क्षेत्रात बदलले (सरासरी ΔNDWI: **{mean_d:+.3f}**)."
+        elif lang == "bn":
+            return f"{loc_name} এ ভূ-পৃষ্ঠের জল ও আর্দ্রতা **{total_ha:.1f} হেক্টর** জুড়ে পরিবর্তিত হয়েছে (গড় ΔNDWI: **{mean_d:+.3f}**)।"
+        elif lang == "gu":
+            return f"{loc_name}માં સપાટી પરનું પાણી અને ભેજ **{total_ha:.1f} હેક્ટર** વિસ્તારમાં બદલાયા છે (સરેરાશ ΔNDWI: **{mean_d:+.3f}**)."
+        elif lang == "pa":
+            return f"{loc_name} ਵਿੱਚ ਸਤਹੀ ਪਾਣੀ ਅਤੇ ਨਮੀ **{total_ha:.1f} ਹੈਕਟੇਅਰ** ਖੇਤਰ ਵਿੱਚ ਬਦਲੀ ਹੈ (ਔਸਤ ΔNDWI: **{mean_d:+.3f}**)।"
+        elif lang == "or":
+            return f"{loc_name}ରେ ଭୂପୃଷ୍ଠ ଜଳ ଏବଂ ଆର୍ଦ୍ରତା **{total_ha:.1f} ହେକ୍ଟର**ରେ ପରିବର୍ତ୍ତିତ ହୋଇଛି (ହାରାହାରି ΔNDWI: **{mean_d:+.3f}**)."
+        elif lang == "as":
+            return f"{loc_name}ত পৃষ্ঠীয় জল আৰু আৰ্দ্ৰতা **{total_ha:.1f} হেক্টৰ**ত সলনি হৈছে (গড় ΔNDWI: **{mean_d:+.3f}**)."
+        elif lang == "ur":
+            return f"{loc_name} میں آبی ذخائر اور نمی کی حالت **{total_ha:.1f} ہیکٹر** میں تبدیل ہوئی (اوسط ΔNDWI: **{mean_d:+.3f}**)。"
+        else:
+            return f"Surface water and moisture dynamics changed across **{total_ha:.1f} hectares** in {loc_name} (mean ΔNDWI: **{mean_d:+.3f}**). The relevant hydrological zones are highlighted on your map."
+
+    elif key == "when_happened":
+        b_date = ctx.get("before_date", "2021")
+        a_date = ctx.get("after_date", "2026")
+        start = ctx.get("accel_start", 2024)
+        end = ctx.get("after_year", 2026)
+
+        if lang == "te":
+            return f"భౌతిక మార్పులు **{b_date}** మరియు **{a_date}** మధ్య గుర్తించబడ్డాయి, ప్రత్యేకించి **{start} మరియు {end}** మధ్య అధిక మార్పులు జరిగాయి. నిర్దిష్ట వార్షిక మార్పులను చూడటానికి మ్యాప్ క్రింద ఉన్న టైమ్ చేంజెస్ డ్రాయర్‌ని ఉపయోగించండి."
+        elif lang == "hi":
+            return f"भौतिक परिवर्तन **{b_date}** और **{a_date}** के बीच पाए गए, विशेष रूप से **{start} और {end}** के बीच। विशिष्ट वार्षिक अवलोकनों के लिए मानचित्र के नीचे टाइम चेंजेज ड्रॉअर का उपयोग करें।"
+        elif lang == "ta":
+            return f"இயற்கை மாற்றங்கள் **{b_date}** மற்றும் **{a_date}** இடையே பதிவாகியுள்ளன, குறிப்பாக **{start} முதல் {end}** வரை அதிக மாற்றங்கள் நிகழ்ந்துள்ளன."
+        elif lang == "kn":
+            return f"ಭೌತಿಕ ಬದಲಾವಣೆಗಳು **{b_date}** ಮತ್ತು **{a_date}** ನಡುವೆ ಪತ್ತೆಯಾಗಿವೆ, ವಿಶೇಷವಾಗಿ **{start} ಮತ್ತು {end}** ನಡುವೆ."
+        elif lang == "ur":
+            return f"تبدیلیاں **{b_date}** اور **{a_date}** کے درمیان ریکارڈ کی گئیں، خاص طور پر **{start} اور {end}** کے درمیان۔"
+        else:
+            return f"The physical changes were detected between **{b_date}** and **{a_date}**, with concentrated activity between **{start} and {end}**. You can use the Time Changes drawer below the map to observe specific annual passes."
+
+    # Default general fallback
+    total_ha = ctx.get("total_changed_ha", 0)
+    pct = ctx.get("pct_changed", 0)
+    if lang == "te":
+        return f"**{loc_name}**లో, మొత్తం **{total_ha} హెక్టార్ల** ఉపరితల మార్పు కనుగొనబడింది (మొత్తం ప్రాంతంలో {pct}%). దయచేసి వృక్షసంపద, పట్టణ విస్తరణ లేదా నీటి వనరుల గురించి నిర్దిష్ట ప్రశ్న అడగండి."
+    elif lang == "hi":
+        return f"**{loc_name}** में, **{total_ha} हेक्टेयर** का सतही परिवर्तन दर्ज किया गया (क्षेत्र का {pct}%)। कृपया वनस्पति, शहरी विस्तार या जल निकायों के बारे में विशिष्ट प्रश्न पूछें।"
+    elif lang == "ta":
+        return f"**{loc_name}** பகுதியில், **{total_ha} ஹெக்டேர்** மேற்பரப்பு மாற்றம் கண்டறியப்பட்டது ({pct}%). தாவரங்கள், நகர்ப்புற வளர்ச்சி அல்லது நீர்நிலைகள் பற்றி கேளுங்கள்."
+    elif lang == "kn":
+        return f"**{loc_name}** ನಲ್ಲಿ, **{total_ha} ಹೆಕ್ಟೇರ್** ಮೇಲ್ಮೈ ಬದಲಾವಣೆ ಪತ್ತೆಯಾಗಿದೆ ({pct}%)."
+    elif lang == "ur":
+        return f"**{loc_name}** میں **{total_ha} ہیکٹر** سطح پر تبدیلی درج کی گئی ({pct}%)۔"
+    return f"In **{loc_name}**, **{total_ha} hectares** of surface change were detected ({pct}% of the AOI). Please ask a specific question about vegetation, urban expansion, water bodies, or map hotspots."
+
 async def answer_conversational_query(
     analysis_context: Dict[str, Any],
     user_message: str,
-    chat_history: List[Dict[str, str]]
+    chat_history: List[Dict[str, str]],
+    language: str = "en"
 ) -> ChatResponse:
     """
     Answers follow-up conversational questions while preserving full AnalysisContext.
@@ -350,11 +565,15 @@ async def answer_conversational_query(
             
             cat_desc = "urban expansion" if "Urban" in target.get("category", "") else target.get("user_label", "change").lower()
             hotspot_num = target.get("indicator_number", 1)
-            reply = (
-                f"The largest detected {cat_desc} occurred **{direction}** of {loc_name}, "
-                f"covering **{target['area_hectares']} hectares** (Hotspot #{hotspot_num}) "
-                f"with ΔNDBI of **{target['delta_ndbi']:+.3f}** and ΔNDVI of **{target['delta_ndvi']:+.3f}**. "
-                f"I have centered and highlighted it on your map."
+            reply = localize_heuristic_reply(
+                "where_biggest", language,
+                loc_name=loc_name,
+                cat_desc=cat_desc,
+                direction=direction,
+                ha=target['area_hectares'],
+                num=hotspot_num,
+                d_ndbi=target['delta_ndbi'],
+                d_ndvi=target['delta_ndvi']
             )
             suggested_actions = ["Was it urban development?", "How did vegetation change?", "When did it happen?"]
             return ChatResponse(
@@ -401,10 +620,13 @@ async def answer_conversational_query(
     # 3. Multi-turn Follow-up: "When did it happen?" / "What year?"
     if any(phrase in msg_lower for phrase in ["when did", "what year", "timing", "when happened", "timeline"]):
         accel_start = max(before_year, after_year - 2)
-        reply = (
-            f"The physical changes were detected between **{before_date}** and **{after_date}**, "
-            f"with concentrated activity between **{accel_start} and {after_year}**. "
-            f"You can use the Time Changes drawer below the map to observe specific annual passes."
+        reply = localize_heuristic_reply(
+            "when_happened", language,
+            loc_name=loc_name,
+            before_date=before_date,
+            after_date=after_date,
+            accel_start=accel_start,
+            after_year=after_year
         )
         suggested_actions = ["Where did the biggest change happen?", "How did vegetation change?", "How much urban growth occurred?"]
         return ChatResponse(
@@ -425,14 +647,14 @@ async def answer_conversational_query(
         gain_ha = sum(r.get("area_hectares", 0) for r in gain_regions)
         mean_delta_ndvi = analysis_context.get("indices_summary", {}).get("delta_ndvi_mean", -0.04)
         
-        if loss_ha > 0 and gain_ha > 0:
-            reply = f"Vegetation in {loc_name} showed **{loss_ha:.1f} ha** of canopy reduction alongside **{gain_ha:.1f} ha** of regrowth (overall mean ΔNDVI: **{mean_delta_ndvi:+.3f}**). I've highlighted the affected vegetation zones on your map."
-        elif loss_ha > 0:
-            reply = f"Vegetation in {loc_name} decreased by **{loss_ha:.1f} hectares** across {len(loss_regions)} detected zones (mean ΔNDVI: **{mean_delta_ndvi:+.3f}**). The primary reduction clusters are highlighted on your map."
-        elif gain_ha > 0:
-            reply = f"Vegetation in {loc_name} increased by **{gain_ha:.1f} hectares** across {len(gain_regions)} zones (mean ΔNDVI: **{mean_delta_ndvi:+.3f}**). I've highlighted the regrowth zones on your map."
-        else:
-            reply = f"No significant vegetation loss was detected in {loc_name} (mean ΔNDVI: **{mean_delta_ndvi:+.3f}**)."
+        reply = localize_heuristic_reply(
+            "vegetation", language,
+            loc_name=loc_name,
+            loss_ha=loss_ha,
+            gain_ha=gain_ha,
+            mean_delta_ndvi=mean_delta_ndvi,
+            loss_count=len(loss_regions)
+        )
             
         highlight_ids = [r["id"] for r in (loss_regions or veg_regions)[:5]]
         if veg_regions:
@@ -457,9 +679,12 @@ async def answer_conversational_query(
         total_urban_ha = sum(r.get("area_hectares", 0) for r in urban_regions)
         mean_ndbi = analysis_context.get("indices_summary", {}).get("delta_ndbi_mean", 0.08)
         
-        reply = (
-            f"Urban and built-up land expanded by **{total_urban_ha:.1f} hectares** across **{len(urban_regions)} clusters** in {loc_name} "
-            f"(mean ΔNDBI: **{mean_ndbi:+.3f}**). The primary expansion areas are highlighted on your map."
+        reply = localize_heuristic_reply(
+            "urban_general", language,
+            loc_name=loc_name,
+            total_ha=total_urban_ha,
+            clusters=len(urban_regions),
+            mean_ndbi=mean_ndbi
         )
         highlight_ids = [r["id"] for r in urban_regions[:5]]
         if urban_regions:
@@ -484,9 +709,11 @@ async def answer_conversational_query(
         total_water_ha = sum(r.get("area_hectares", 0) for r in water_regions)
         mean_ndwi = analysis_context.get("indices_summary", {}).get("delta_ndwi_mean", 0.0)
         
-        reply = (
-            f"Surface water and moisture dynamics changed across **{total_water_ha:.1f} hectares** in {loc_name} "
-            f"(mean ΔNDWI: **{mean_ndwi:+.3f}**). The relevant hydrological zones are highlighted on your map."
+        reply = localize_heuristic_reply(
+            "water_general", language,
+            loc_name=loc_name,
+            total_ha=total_water_ha,
+            mean_ndwi=mean_ndwi
         )
         highlight_ids = [r["id"] for r in water_regions[:5]]
         if water_regions:
@@ -533,7 +760,7 @@ async def answer_conversational_query(
         )
 
     # Prioritize live Gemini AI Geospatial Analyst for all questions
-    gemini_reply = await query_gemini_analyst_chat(analysis_context, user_message, chat_history)
+    gemini_reply = await query_gemini_analyst_chat(analysis_context, user_message, chat_history, language=language)
     if gemini_reply:
         return ChatResponse(
             reply=gemini_reply,
@@ -650,10 +877,11 @@ async def answer_conversational_query(
         )
 
     # General concise fallback
-    reply = (
-        f"In **{loc_name}**, **{analysis_context.get('total_changed_hectares', 0)} hectares** of surface change were detected "
-        f"({analysis_context.get('percent_aoi_changed', 0)}% of the AOI). "
-        f"Please ask a specific question about vegetation, urban expansion, water bodies, or map hotspots."
+    reply = localize_heuristic_reply(
+        "general_fallback", language,
+        loc_name=loc_name,
+        total_changed_ha=analysis_context.get('total_changed_hectares', 0),
+        pct_changed=analysis_context.get('percent_aoi_changed', 0)
     )
     return ChatResponse(
         reply=reply,

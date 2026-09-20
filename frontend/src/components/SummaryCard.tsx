@@ -64,9 +64,22 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
   const waterChange = waterStat ? waterStat.change_ha : 0;
   const waterLabel = Math.abs(waterChange) < 1.0 ? "No significant water-surface change detected." : waterChange > 0 ? "Water surface expanded." : "Water surface contracted.";
 
+  // Dashboard Status and Arrow logic based strictly on real analysis
+  const vegArrow = treeChange > 5 ? '↑' : treeChange < -5 ? '↓' : '→';
+  const vegStatus = Math.abs(treeChange) > 25 ? 'Significant change' : Math.abs(treeChange) > 5 ? 'Moderate change' : 'Stable';
+
+  const waterArrow = waterChange > 2 ? '↑' : waterChange < -2 ? '↓' : '→';
+  const waterStatus = Math.abs(waterChange) > 10 ? 'Significant change' : Math.abs(waterChange) > 2 ? 'Moderate change' : 'Stable';
+
+  const builtArrow = builtChange > 5 ? '↑' : builtChange < -5 ? '↓' : '→';
+  const builtStatus = Math.abs(builtChange) > 25 ? 'Significant change' : Math.abs(builtChange) > 5 ? 'Moderate change' : 'Stable';
+
+  const cropArrow = cropChange > 5 ? '↑' : cropChange < -5 ? '↓' : '→';
+  const cropStatus = Math.abs(cropChange) > 25 ? 'Significant change' : Math.abs(cropChange) > 5 ? 'Moderate change' : 'Stable';
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900 border-l border-slate-200 dark:border-zinc-800 backdrop-blur-xl overflow-y-auto p-4 space-y-4 font-sans text-slate-800 dark:text-slate-100">
-      {/* Top Headline Card (Figma-inspired clean focal banner) */}
+      {/* Top Headline Card */}
       <div className="rounded-2xl bg-gradient-to-br from-blue-50/90 via-slate-50 to-indigo-50/60 dark:from-zinc-800/90 dark:via-zinc-900 dark:to-zinc-900 p-4 border border-blue-100 dark:border-zinc-700/80 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
         
@@ -89,6 +102,106 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
           <span className="text-slate-700 dark:text-slate-300 font-medium">{context.actual_before_date}</span>
           <span className="text-slate-400 dark:text-slate-500">→</span>
           <span className="text-blue-600 dark:text-blue-400 font-semibold">{context.actual_after_date}</span>
+        </div>
+      </div>
+
+      {/* Compact Environmental-Change Dashboard (Requirement 5) */}
+      <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-850 border border-slate-200 dark:border-zinc-750 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+            ENVIRONMENTAL-CHANGE DASHBOARD
+          </span>
+          <span className="text-[9.5px] font-mono text-slate-400">CLICK TO FILTER</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {/* VEGETATION */}
+          <button
+            type="button"
+            onClick={() => onFilterCategory(activeFilter === 'vegetation' ? null : 'vegetation')}
+            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              activeFilter === 'vegetation'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-700 ring-1 ring-emerald-500/20'
+                : 'bg-white dark:bg-zinc-900 hover:bg-emerald-50/40 dark:hover:bg-zinc-800 border-slate-200 dark:border-zinc-700'
+            }`}
+          >
+            <div className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400 uppercase flex items-center justify-between">
+              <span>VEGETATION</span>
+              <span className="font-bold text-sm">{vegArrow}</span>
+            </div>
+            <div className="font-semibold text-slate-900 dark:text-white mt-1 text-[11px] truncate">
+              {vegStatus}
+            </div>
+            <div className="text-[9.5px] font-mono text-slate-500 dark:text-zinc-400 mt-0.5">
+              {treeChange >= 0 ? `+${treeChange.toFixed(1)} ha` : `${treeChange.toFixed(1)} ha`}
+            </div>
+          </button>
+
+          {/* WATER */}
+          <button
+            type="button"
+            onClick={() => onFilterCategory(activeFilter === 'water' ? null : 'water')}
+            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              activeFilter === 'water'
+                ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-400 dark:border-blue-700 ring-1 ring-blue-500/20'
+                : 'bg-white dark:bg-zinc-900 hover:bg-blue-50/40 dark:hover:bg-zinc-800 border-slate-200 dark:border-zinc-700'
+            }`}
+          >
+            <div className="text-[10px] font-mono font-bold text-blue-700 dark:text-blue-400 uppercase flex items-center justify-between">
+              <span>WATER</span>
+              <span className="font-bold text-sm">{waterArrow}</span>
+            </div>
+            <div className="font-semibold text-slate-900 dark:text-white mt-1 text-[11px] truncate">
+              {waterStatus}
+            </div>
+            <div className="text-[9.5px] font-mono text-slate-500 dark:text-zinc-400 mt-0.5">
+              {waterChange >= 0 ? `+${waterChange.toFixed(1)} ha` : `${waterChange.toFixed(1)} ha`}
+            </div>
+          </button>
+
+          {/* BUILT-UP */}
+          <button
+            type="button"
+            onClick={() => onFilterCategory(activeFilter === 'urban' ? null : 'urban')}
+            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              activeFilter === 'urban'
+                ? 'bg-orange-50 dark:bg-orange-950/40 border-orange-400 dark:border-orange-700 ring-1 ring-orange-500/20'
+                : 'bg-white dark:bg-zinc-900 hover:bg-orange-50/40 dark:hover:bg-zinc-800 border-slate-200 dark:border-zinc-700'
+            }`}
+          >
+            <div className="text-[10px] font-mono font-bold text-orange-700 dark:text-orange-400 uppercase flex items-center justify-between">
+              <span>BUILT-UP</span>
+              <span className="font-bold text-sm">{builtArrow}</span>
+            </div>
+            <div className="font-semibold text-slate-900 dark:text-white mt-1 text-[11px] truncate">
+              {builtStatus}
+            </div>
+            <div className="text-[9.5px] font-mono text-slate-500 dark:text-zinc-400 mt-0.5">
+              {builtChange >= 0 ? `+${builtChange.toFixed(1)} ha` : `${builtChange.toFixed(1)} ha`}
+            </div>
+          </button>
+
+          {/* AGRICULTURE */}
+          <button
+            type="button"
+            onClick={() => onFilterCategory(activeFilter === 'bare' ? null : 'bare')}
+            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              activeFilter === 'bare'
+                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-400 dark:border-amber-700 ring-1 ring-amber-500/20'
+                : 'bg-white dark:bg-zinc-900 hover:bg-amber-50/40 dark:hover:bg-zinc-800 border-slate-200 dark:border-zinc-700'
+            }`}
+          >
+            <div className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400 uppercase flex items-center justify-between">
+              <span>AGRICULTURE</span>
+              <span className="font-bold text-sm">{cropArrow}</span>
+            </div>
+            <div className="font-semibold text-slate-900 dark:text-white mt-1 text-[11px] truncate">
+              {cropStatus}
+            </div>
+            <div className="text-[9.5px] font-mono text-slate-500 dark:text-zinc-400 mt-0.5">
+              {cropChange >= 0 ? `+${cropChange.toFixed(1)} ha` : `${cropChange.toFixed(1)} ha`}
+            </div>
+          </button>
         </div>
       </div>
 

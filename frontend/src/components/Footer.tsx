@@ -5,9 +5,9 @@ export const Footer: React.FC = () => {
   return (
     <footer className="w-full bg-slate-50 dark:bg-[#09090b] border-t border-slate-200 dark:border-zinc-800 py-12 select-none text-slate-600 dark:text-zinc-400 font-sans transition-colors">
       <div className="max-w-7xl mx-auto px-4 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8 mb-10">
           {/* Col 1: Brand & Mission */}
-          <div className="md:col-span-1 space-y-3">
+          <div className="sm:col-span-2 lg:col-span-1 space-y-3">
             <SatQueryLogo size="md" />
             <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed pt-2">
               Autonomous satellite remote sensing intelligence platform powered by Copernicus Sentinel-2 STAC, multi-band spectral processing, and spatial reasoning.
@@ -66,6 +66,63 @@ export const Footer: React.FC = () => {
             </p>
             <div className="pt-2 text-[10.5px] font-mono text-blue-600 dark:text-blue-400 font-semibold">
               Smart India Hackathon Edition
+            </div>
+          </div>
+
+          {/* Col 5: Developed By (Team Credits) */}
+          <div className="space-y-2.5 text-xs">
+            <h4 className="font-mono text-[11px] uppercase tracking-wider text-slate-900 dark:text-white font-bold">
+              DEVELOPED BY
+            </h4>
+            <div className="space-y-2 pt-0.5">
+              <div>
+                <div className="font-semibold text-slate-900 dark:text-slate-100 text-xs">
+                  B. Viharika
+                </div>
+                <div className="text-[11px] font-mono text-blue-600 dark:text-blue-400 font-medium">
+                  Team Lead
+                </div>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-800 dark:text-zinc-200 text-xs">
+                  B. Kamal Misra
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 dark:text-zinc-500">
+                  Team Member
+                </div>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-800 dark:text-zinc-200 text-xs">
+                  P. Sam
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 dark:text-zinc-500">
+                  Team Member
+                </div>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-800 dark:text-zinc-200 text-xs">
+                  K. S. Pradheet
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 dark:text-zinc-500">
+                  Team Member
+                </div>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-800 dark:text-zinc-200 text-xs">
+                  S. Shanmukha Manidhar
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 dark:text-zinc-500">
+                  Team Member
+                </div>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-800 dark:text-zinc-200 text-xs">
+                  M. Krishna Prasanth
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 dark:text-zinc-500">
+                  Team Member
+                </div>
+              </div>
             </div>
           </div>
         </div>

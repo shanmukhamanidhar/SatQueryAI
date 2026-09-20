@@ -476,6 +476,14 @@ async def resolve_location(query: str) -> LocationInfo:
         logger.info(f"Resolved via Indian Authoritative Registry: '{india_loc.name}' ({india_loc.location_type}) [{india_loc.latitude}, {india_loc.longitude}]")
         _GEOCODE_CACHE[cache_key] = india_loc
         return india_loc
+
+    # 0b. Check Authoritative Curated Global Locations Registry
+    from services.global_locations import get_global_location
+    global_loc = get_global_location(clean_query)
+    if global_loc:
+        logger.info(f"Resolved via Global Locations Registry: '{global_loc.name}' ({global_loc.location_type}) [{global_loc.latitude}, {global_loc.longitude}]")
+        _GEOCODE_CACHE[cache_key] = global_loc
+        return global_loc
         
     # 1. Direct coordinate parsing
     coords = parse_lat_lon_query(clean_query)
@@ -572,31 +580,12 @@ async def resolve_location(query: str) -> LocationInfo:
                         
                         if is_country:
                             loc_type = "country"
-                            # For national regional analysis, use an expansive multi-tile regional footprint
-                            # Special calibration for Sri Lanka (Central Highlands & Agro-Ecological Corridor)
-                            if "sri lanka" in name.lower() or "sri lanka" in clean_query.lower():
-                                bbox = [80.4000, 7.2000, 80.9500, 7.7500]
-                                area_desc = "National Regional AOI (Central Highlands & Mahaweli Basin, Sri Lanka, ~330,000 ha)"
-                            else:
-                                bbox = [round(lon - 0.25, 5), round(lat - 0.25, 5), round(lon + 0.25, 5), round(lat + 0.25, 5)]
-                                area_desc = f"National Regional AOI (Central Agro-Ecological Corridor, {name}, ~300,000 ha)"
+                            bbox = [round(w, 5), round(s, 5), round(e, 5), round(n, 5)]
+                            area_desc = f"National Administrative AOI ({name})"
                         elif is_state:
                             loc_type = "state"
-                            # For states/large regions:
-                            # Intelligently define a substantial regional analysis footprint (~300,000 ha)
-                            name_lower = name.lower()
-                            if "kerala" in name_lower or "kerala" in clean_query.lower():
-                                bbox = [76.2000, 10.0000, 76.7500, 10.5500]
-                                area_desc = "Regional State AOI (Central Western Ghats Agro-Forest Corridor, Kerala, ~320,000 ha)"
-                            elif "gujarat" in name_lower or "gujarat" in clean_query.lower():
-                                bbox = [71.5000, 22.0000, 72.1000, 22.6000]
-                                area_desc = "Regional State AOI (Central Saurashtra & Sabarmati Regional Basin, Gujarat, ~360,000 ha)"
-                            elif "tamil nadu" in name_lower or "tamil nadu" in clean_query.lower():
-                                bbox = [78.4000, 10.8000, 79.0000, 11.4000]
-                                area_desc = "Regional State AOI (Central Kaveri Basin & Agricultural Belt, Tamil Nadu, ~350,000 ha)"
-                            else:
-                                bbox = [round(lon - 0.225, 5), round(lat - 0.225, 5), round(lon + 0.225, 5), round(lat + 0.225, 5)]
-                                area_desc = f"Regional State AOI (Representative Regional Corridor, {name}, ~250,000 ha)"
+                            bbox = [round(w, 5), round(s, 5), round(e, 5), round(n, 5)]
+                            area_desc = f"State Administrative AOI ({name})"
                         else:
                             loc_type = "city"
                             # Standard metropolitan analysis bounding box (~15km x 15km)
