@@ -8,7 +8,9 @@ import {
   ShieldCheck, 
   Layers, 
   Compass, 
-  Database,
+  Trees,
+  Droplets,
+  Building2,
   Calendar,
   Satellite
 } from 'lucide-react';
@@ -39,83 +41,79 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   };
 
   const suggestionChips = [
-    { label: "Visakhapatnam, Andhra Pradesh", query: "Analyze Visakhapatnam between 2021 and 2026" },
-    { label: "Krishna River in Vijayawada", query: "Krishna River in Vijayawada" },
-    { label: "Hyderabad Urban Growth", query: "Hyderabad, Telangana, India" },
-    { label: "Gujarat Coastal & Croplands", query: "Gujarat, India" },
-    { label: "Tokyo, Japan", query: "Tokyo, Japan" },
-    { label: "London, United Kingdom", query: "London, United Kingdom" },
+    { label: "Visakhapatnam, India", query: "Analyze Visakhapatnam between 2021 and 2026", color: "text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-300 dark:bg-blue-950/40 dark:border-blue-900/50" },
+    { label: "Krishna River (Vijayawada)", query: "Krishna River in Vijayawada", color: "text-sky-700 bg-sky-50 border-sky-200 dark:text-sky-300 dark:bg-sky-950/40 dark:border-sky-900/50" },
+    { label: "Hyderabad Urban Growth", query: "Hyderabad, Telangana, India", color: "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-300 dark:bg-orange-950/40 dark:border-orange-900/50" },
+    { label: "Bengaluru IT Sprawl", query: "Bengaluru, Karnataka between 2021 and 2026", color: "text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/50" },
+    { label: "Amazon Rainforest Basin", query: "Analyze Para, Brazil between 2021 and 2026", color: "text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-900/50" },
+    { label: "Tokyo Bay Coastal Metro", query: "Tokyo, Japan", color: "text-indigo-700 bg-indigo-50 border-indigo-200 dark:text-indigo-300 dark:bg-indigo-950/40 dark:border-indigo-900/50" },
   ];
 
   return (
-    <section id="hero" className="relative min-h-[90vh] flex flex-col justify-between overflow-hidden bg-[#03070D] border-b border-[#0C1C2A]">
-      {/* Cinematic Earth & Deep Space Visual Layer */}
+    <section id="hero" className="relative min-h-[85vh] flex flex-col justify-between overflow-hidden bg-white dark:bg-[#09090b] studio-grid border-b border-slate-200 dark:border-zinc-800 transition-colors">
+      {/* Background Graphic Elements */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
-        {/* Deep space radial aura */}
-        <div className="absolute top-1/4 right-0 lg:right-[-10%] w-[650px] lg:w-[950px] h-[650px] lg:h-[950px] rounded-full bg-gradient-to-br from-[#4EA7FF]/10 via-[#42E8D0]/5 to-transparent blur-3xl opacity-70" />
+        {/* Soft Radial Ambient Aura */}
+        <div className="absolute top-1/4 right-0 lg:right-[-5%] w-[600px] lg:w-[850px] h-[600px] lg:h-[850px] rounded-full bg-gradient-to-br from-blue-500/10 via-emerald-500/5 to-transparent blur-3xl opacity-70" />
 
         {/* Photorealistic Moving Satellite Earth Sphere */}
-        <div className="absolute -right-32 sm:-right-20 lg:right-[-4%] top-[10%] lg:top-[4%] w-[480px] sm:w-[600px] lg:w-[780px] h-[480px] sm:h-[600px] lg:h-[780px] pointer-events-none select-none">
-          {/* Deep Space Orbit Ellipse */}
-          <div className="absolute inset-0 rounded-full border border-[#42E8D0]/20 scale-125 rotate-[-22deg] animate-pulse pointer-events-none" />
-          <div className="absolute inset-[-40px] rounded-full border border-dashed border-[#4EA7FF]/20 rotate-[-22deg] pointer-events-none" />
+        <div className="absolute -right-32 sm:-right-20 lg:right-[-4%] top-[12%] lg:top-[6%] w-[460px] sm:w-[580px] lg:w-[740px] h-[460px] sm:h-[580px] lg:h-[740px] pointer-events-none select-none">
+          {/* Orbital Orbit Ellipse */}
+          <div className="absolute inset-0 rounded-full border border-blue-500/20 scale-125 rotate-[-22deg] animate-pulse pointer-events-none" />
+          <div className="absolute inset-[-40px] rounded-full border border-dashed border-slate-400/20 dark:border-blue-400/20 rotate-[-22deg] pointer-events-none" />
 
-          {/* 3D Realistic Earth Globe */}
+          {/* 3D Earth Globe Container */}
           <div className="earth-sphere-realistic">
-            {/* Realistic Earth Daymap Texture Rotating */}
             <div className="earth-surface" />
-            {/* Realistic Drifting Cloud Layer */}
             <div className="earth-clouds" />
-            {/* Day/Night Terminator Shadow & Spherical Depth */}
             <div className="earth-atmosphere-shadow" />
-            {/* Atmospheric Rayleigh Scattering Glow Edge */}
             <div className="earth-rim-glow" />
           </div>
 
-          {/* Active Sentinel-2 Orbiting Marker */}
+          {/* Sentinel-2 Orbiting Telemetry Marker */}
           <div 
             className="absolute inset-[-60px] pointer-events-none"
-            style={{ animation: 'satellite-orbit-sweep 24s linear infinite' }}
+            style={{ animation: 'satellite-orbit-sweep 26s linear infinite' }}
           >
             <div className="absolute top-8 right-16 flex items-center space-x-2">
               <div className="relative">
-                <span className="w-3.5 h-3.5 rounded-full bg-[#42E8D0] block shadow-[0_0_16px_#42E8D0]" />
-                <span className="w-8 h-8 rounded-full border border-[#42E8D0]/60 block absolute -top-[9px] -left-[9px] animate-ping" />
+                <span className="w-3.5 h-3.5 rounded-full bg-blue-600 block shadow-[0_0_14px_#2563eb]" />
+                <span className="w-8 h-8 rounded-full border border-blue-500/60 block absolute -top-[9px] -left-[9px] animate-ping" />
               </div>
-              <div className="px-2 py-0.5 rounded-md bg-[#06101A]/90 border border-[#42E8D0]/50 text-[10px] font-mono text-[#42E8D0] shadow-xl backdrop-blur-md">
+              <div className="px-2.5 py-0.5 rounded-full bg-white/90 dark:bg-zinc-900/90 border border-blue-200 dark:border-blue-800 text-[10px] font-mono text-blue-700 dark:text-blue-400 shadow-md backdrop-blur-md font-semibold">
                 SENTINEL-2A · 786 KM
               </div>
             </div>
           </div>
         </div>
 
-        {/* Ambient Dark Gradients for Text Legibility */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#03070D] via-[#03070D]/90 to-transparent lg:w-3/5 z-10 pointer-events-none" />
-        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#03070D] to-transparent z-10 pointer-events-none" />
+        {/* Subtle Fade Gradients for High Readability */}
+        <div className="absolute inset-0 bg-gradient-to-r from-white via-white/95 to-transparent dark:from-[#09090b] dark:via-[#09090b]/95 dark:to-transparent lg:w-3/5 z-10 pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-white to-transparent dark:from-[#09090b] dark:to-transparent z-10 pointer-events-none" />
       </div>
 
-      {/* Hero Content Grid */}
+      {/* Hero Content Area */}
       <div className="relative z-20 max-w-7xl mx-auto px-4 lg:px-8 pt-12 lg:pt-20 pb-12 w-full flex flex-col justify-center">
         <div className="max-w-3xl">
-          {/* Real-Data Tagline Badge */}
-          <div className="inline-flex items-center space-x-2.5 px-3 py-1.5 rounded-full bg-[#0C1C2A]/90 border border-[#42E8D0]/30 backdrop-blur-md mb-6 shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-[#42E8D0] shadow-[0_0_8px_#42E8D0] animate-pulse" />
-            <span className="text-[11px] font-mono tracking-widest text-slate-200 uppercase font-semibold">
-              REAL DATA · REAL CHANGE · AUTONOMOUS COPERNICUS STAC
+          {/* Status Badge */}
+          <div className="inline-flex items-center space-x-2.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 backdrop-blur-md mb-6 shadow-xs">
+            <span className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400 animate-pulse" />
+            <span className="text-[11px] font-mono tracking-wider text-slate-700 dark:text-zinc-300 uppercase font-semibold">
+              COPERNICUS MULTISPECTRAL OBSERVATION · REAL-TIME STAC
             </span>
           </div>
 
-          {/* Hero Editorial Heading */}
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.08] mb-6 font-sans">
-            A Clearer <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#42E8D0] via-[#55DDE0] to-[#4EA7FF]">
-              Tomorrow.
+          {/* Heading */}
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.08] mb-6 font-sans">
+            Earth Observation. <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 dark:from-blue-400 dark:via-indigo-400 dark:to-sky-300">
+              Clear. Explainable.
             </span>
           </h1>
 
-          {/* Supporting Copy */}
-          <p className="text-base sm:text-lg text-slate-300 max-w-xl font-normal leading-relaxed mb-8">
-            Explore our planet through satellite data, intelligent queries, environmental insights, and powerful remote-sensing analysis tools.
+          {/* Subtitle */}
+          <p className="text-base sm:text-lg text-slate-600 dark:text-zinc-300 max-w-xl font-normal leading-relaxed mb-8">
+            Investigate environmental dynamics, deforestation, water security, and urban sprawl across real satellite imagery. Ask in plain language—get verifiable scientific indices and vector boundaries.
           </p>
 
           {/* Action CTAs */}
@@ -123,46 +121,34 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <button
               type="button"
               onClick={onExploreClick}
-              className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-[#42E8D0] to-[#4EA7FF] hover:from-[#3BE0C8] hover:to-[#3B96F5] text-[#03070D] font-bold text-sm tracking-wide transition-all shadow-lg shadow-[#42E8D0]/25 hover:shadow-[#42E8D0]/40 flex items-center space-x-2 group"
+              className="px-6 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm tracking-wide transition-all shadow-md shadow-blue-500/25 flex items-center space-x-2 group"
             >
-              <span>Start Exploring</span>
+              <span>Explore Satellite Maps</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
-
-            {onRunDemo && (
-              <button
-                type="button"
-                onClick={onRunDemo}
-                disabled={isAnalyzing}
-                className="px-5 py-3.5 rounded-xl bg-[#0C1C2A]/80 hover:bg-[#102536] border border-[#4EA7FF]/30 hover:border-[#4EA7FF]/60 text-slate-200 text-sm font-semibold transition-all flex items-center space-x-2 backdrop-blur-md"
-              >
-                <Sparkles className="w-4 h-4 text-[#42E8D0]" />
-                <span>Launch SIH Demo ✦</span>
-              </button>
-            )}
           </div>
 
-          {/* Hero Query Interface — "✦ Ask SatQueryAI" */}
-          <div className="w-full max-w-2xl bg-[#0C1C2A]/85 backdrop-blur-2xl border border-[#42E8D0]/30 rounded-2xl p-3 shadow-2xl shadow-[#03070D]">
-            <div className="flex items-center space-x-2 px-2 pb-2 text-[11px] font-mono text-[#42E8D0] font-semibold tracking-wider uppercase">
+          {/* Hero Query Interface */}
+          <div className="w-full max-w-2xl bg-white dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 shadow-xl shadow-slate-200/50 dark:shadow-black/60 transition-all">
+            <div className="flex items-center space-x-2 px-1 pb-2.5 text-[11px] font-mono text-blue-600 dark:text-blue-400 font-bold tracking-wider uppercase">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Ask SatQueryAI</span>
+              <span>Ask Any Location on Earth</span>
             </div>
 
             <form onSubmit={handleSubmit} className="relative flex items-center">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+              <Search className="w-4 h-4 text-slate-400 dark:text-zinc-500 absolute left-3.5 pointer-events-none" />
               <input
                 type="text"
                 value={queryInput}
                 onChange={(e) => setQueryInput(e.target.value)}
-                placeholder="Ask anything about Earth... (e.g., 'What changed in Visakhapatnam between 2021 and 2026?')"
-                className="w-full pl-10 pr-28 py-3 bg-[#06101A] border border-slate-700/70 hover:border-[#42E8D0]/50 rounded-xl text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-[#42E8D0] focus:ring-2 focus:ring-[#42E8D0]/20 transition-all font-sans"
+                placeholder="Ask about changes anywhere... (e.g. 'What changed in Visakhapatnam?')"
+                className="w-full pl-10 pr-28 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:outline-none focus:border-blue-600 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all font-sans"
                 disabled={isAnalyzing}
               />
               <button
                 type="submit"
                 disabled={isAnalyzing || !queryInput.trim()}
-                className="absolute right-1.5 px-4 py-2 bg-gradient-to-r from-[#42E8D0] to-[#4EA7FF] hover:from-[#3BE0C8] hover:to-[#3B96F5] text-[#03070D] font-bold text-xs rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center space-x-1.5 font-mono shadow-sm"
+                className="absolute right-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center space-x-1.5 font-mono shadow-xs"
               >
                 {isAnalyzing ? (
                   <>
@@ -179,9 +165,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </form>
 
             {/* Suggestion Chips */}
-            <div className="mt-2.5 pt-2.5 border-t border-[#102536] flex items-center space-x-2 overflow-x-auto no-scrollbar text-xs">
-              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider shrink-0">
-                Suggestions:
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center space-x-2 overflow-x-auto no-scrollbar text-xs">
+              <span className="text-[10px] font-mono text-slate-500 dark:text-zinc-500 uppercase tracking-wider shrink-0 font-medium">
+                Preset Intel:
               </span>
               {suggestionChips.map((chip, idx) => (
                 <button
@@ -189,7 +175,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   type="button"
                   onClick={() => onSearch(chip.query)}
                   disabled={isAnalyzing}
-                  className="shrink-0 px-2.5 py-1 rounded-lg bg-[#06101A] hover:bg-[#102536] border border-slate-800 hover:border-[#42E8D0]/40 text-slate-300 hover:text-[#42E8D0] text-[11px] transition-all font-sans"
+                  className={`shrink-0 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all font-sans shadow-xs ${chip.color}`}
                 >
                   {chip.label}
                 </button>
@@ -199,51 +185,61 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         </div>
       </div>
 
-      {/* Section 14: Real Project Statistics Strip */}
-      <div className="relative z-20 w-full bg-[#06101A]/95 border-t border-[#0C1C2A] backdrop-blur-xl py-5">
-        <div className="max-w-7xl mx-auto px-4 lg:px-8 grid grid-cols-2 md:grid-cols-5 gap-6 text-slate-200">
-          <div>
-            <div className="text-2xl lg:text-3xl font-extrabold font-mono text-[#42E8D0] tracking-tight">
-              10m GSD
+      {/* Purposeful Multi-Color Statistics Strip */}
+      <div className="relative z-20 w-full bg-slate-50 dark:bg-zinc-950 border-t border-slate-200 dark:border-zinc-800 py-6 transition-colors">
+        <div className="max-w-7xl mx-auto px-4 lg:px-8 grid grid-cols-2 md:grid-cols-5 gap-6">
+          {/* Blue: Resolution */}
+          <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs">
+            <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 mb-1">
+              <Satellite className="w-4 h-4" />
+              <span className="text-xl lg:text-2xl font-black font-mono tracking-tight">10m GSD</span>
             </div>
-            <div className="text-xs text-slate-400 font-sans mt-0.5 font-medium">
+            <div className="text-xs text-slate-600 dark:text-zinc-400 font-medium">
               Multispectral Ground Sample
             </div>
           </div>
 
-          <div>
-            <div className="text-2xl lg:text-3xl font-extrabold font-mono text-[#4EA7FF] tracking-tight">
-              100%
+          {/* Sky: STAC Coverage */}
+          <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs">
+            <div className="flex items-center space-x-2 text-sky-600 dark:text-sky-400 mb-1">
+              <Globe2 className="w-4 h-4" />
+              <span className="text-xl lg:text-2xl font-black font-mono tracking-tight">100% Real</span>
             </div>
-            <div className="text-xs text-slate-400 font-sans mt-0.5 font-medium">
-              Cloud-Filtered STAC Passes
+            <div className="text-xs text-slate-600 dark:text-zinc-400 font-medium">
+              Copernicus STAC Discovery
             </div>
           </div>
 
-          <div>
-            <div className="text-2xl lg:text-3xl font-extrabold font-mono text-[#35D6A1] tracking-tight">
-              3 Indices
+          {/* Green: Scientific Indices */}
+          <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs">
+            <div className="flex items-center space-x-2 text-emerald-600 dark:text-emerald-400 mb-1">
+              <Trees className="w-4 h-4" />
+              <span className="text-xl lg:text-2xl font-black font-mono tracking-tight">3 Indices</span>
             </div>
-            <div className="text-xs text-slate-400 font-sans mt-0.5 font-medium">
+            <div className="text-xs text-slate-600 dark:text-zinc-400 font-medium">
               NDVI · NDBI · NDWI
             </div>
           </div>
 
-          <div>
-            <div className="text-2xl lg:text-3xl font-extrabold font-mono text-[#FFB454] tracking-tight">
-              Vector
+          {/* Orange: Vector Polygons */}
+          <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs">
+            <div className="flex items-center space-x-2 text-orange-600 dark:text-orange-400 mb-1">
+              <Building2 className="w-4 h-4" />
+              <span className="text-xl lg:text-2xl font-black font-mono tracking-tight">Vector</span>
             </div>
-            <div className="text-xs text-slate-400 font-sans mt-0.5 font-medium">
-              Autonomous Polygon Clusters
+            <div className="text-xs text-slate-600 dark:text-zinc-400 font-medium">
+              Hectare-Quantified Polygons
             </div>
           </div>
 
-          <div className="col-span-2 md:col-span-1">
-            <div className="text-2xl lg:text-3xl font-extrabold font-mono text-[#8B6CFF] tracking-tight">
-              2020–2026
+          {/* Red/Crimson: Time Machine */}
+          <div className="col-span-2 md:col-span-1 p-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs">
+            <div className="flex items-center space-x-2 text-rose-600 dark:text-rose-400 mb-1">
+              <Calendar className="w-4 h-4" />
+              <span className="text-xl lg:text-2xl font-black font-mono tracking-tight">2020–2026</span>
             </div>
-            <div className="text-xs text-slate-400 font-sans mt-0.5 font-medium">
-              Multi-Year Observation Archive
+            <div className="text-xs text-slate-600 dark:text-zinc-400 font-medium">
+              Multi-Year Time Slider
             </div>
           </div>
         </div>

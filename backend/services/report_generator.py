@@ -1,6 +1,8 @@
 import io
 import os
 import base64
+import html
+import logging
 from typing import Dict, Any
 from PIL import Image
 from reportlab.lib.pagesizes import letter
@@ -17,6 +19,17 @@ from reportlab.platypus import (
     HRFlowable
 )
 from config import settings
+
+logger = logging.getLogger(__name__)
+
+def clean_xml(val: Any) -> str:
+    """Safely escapes text for ReportLab XML parsing and replaces problematic unicode."""
+    if val is None:
+        return ""
+    text = str(val).strip()
+    # Normalize unicode arrows and em-dashes
+    text = text.replace('\u2192', '->').replace('\u2014', ' - ').replace('\u2013', ' - ')
+    return html.escape(text)
 
 def generate_pdf_report(analysis: Dict[str, Any]) -> bytes:
     """
@@ -79,27 +92,31 @@ def generate_pdf_report(analysis: Dict[str, Any]) -> bytes:
     )
 
     loc = analysis.get("location", {})
-    loc_name = loc.get("name", "Unknown AOI")
-    country = loc.get("country", "")
-    before_d = analysis.get("actual_before_date", "")
-    after_d = analysis.get("actual_after_date", "")
+    loc_name = clean_xml(loc.get("name", "Unknown AOI"))
+    country = clean_xml(loc.get("country", ""))
+    before_d = clean_xml(analysis.get("actual_before_date", ""))
+    after_d = clean_xml(analysis.get("actual_after_date", ""))
     conf = analysis.get("confidence", {})
     ai_sum = analysis.get("ai_summary", {})
 
     # Header Banner
     story.append(Paragraph("SATQUERYAI — AUTONOMOUS EARTH INTELLIGENCE", subtitle_style))
     story.append(Paragraph(f"Earth Observation Analysis Report: {loc_name}", title_style))
-    story.append(Paragraph(f"Monitoring Period: {before_d} → {after_d} | Sensor: {analysis.get('imagery_source', 'Copernicus Sentinel-2')}", subtitle_style))
+    sensor_name = clean_xml(analysis.get('imagery_source', 'Copernicus Sentinel-2'))
+    story.append(Paragraph(f"Monitoring Period: {before_d} -> {after_d} | Sensor: {sensor_name}", subtitle_style))
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0284c7'), spaceAfter=12))
 
     # Executive Summary Card
     story.append(Paragraph("1. EXECUTIVE AI SUMMARY", heading_style))
-    story.append(Paragraph(f"<b>Key Finding:</b> {ai_sum.get('headline', '')}", body_style))
+    headline = clean_xml(ai_sum.get('headline', ''))
+    observed = clean_xml(ai_sum.get('observed', ''))
+    interpretation = clean_xml(ai_sum.get('interpretation', ''))
+    story.append(Paragraph(f"<b>Key Finding:</b> {headline}", body_style))
     story.append(Spacer(1, 6))
-    story.append(Paragraph(ai_sum.get('observed', ''), body_style))
+    story.append(Paragraph(observed, body_style))
     story.append(Spacer(1, 4))
-    story.append(Paragraph(f"<b>Scientific Interpretation:</b> {ai_sum.get('interpretation', '')}", callout_style))
+    story.append(Paragraph(f"<b>Scientific Interpretation:</b> {interpretation}", callout_style))
     story.append(Spacer(1, 10))
 
     # Imagery Snapshots
@@ -119,6 +136,7 @@ def generate_pdf_report(analysis: Dict[str, Any]) -> bytes:
             header, data = b64_str.split(",", 1)
             raw = base64.b64decode(data)
             p_img = Image.open(io.BytesIO(raw))
+            settings.CACHE_DIR.mkdir(parents=True, exist_ok=True)
             tmp_path = str(settings.CACHE_DIR / f"temp_{os.urandom(6).hex()}.png")
             p_img.save(tmp_path)
             temp_files.append(tmp_path)
@@ -210,18 +228,20 @@ def generate_pdf_report(analysis: Dict[str, Any]) -> bytes:
     # Provenance & Confidence
     story.append(Paragraph("5. DATA PROVENANCE & CONFIDENCE TELEMETRY", heading_style))
     score = conf.get("overall_score", 85)
-    rating = conf.get("rating", "High")
+    rating = clean_xml(conf.get("rating", "High"))
     prov_text = (
         f"<b>Confidence Rating:</b> {score}% ({rating})<br/>"
-        f"<b>Imagery Source:</b> {analysis.get('imagery_source', 'Sentinel-2 L2A')} (GSD: {analysis.get('resolution', '10m')})<br/>"
+        f"<b>Imagery Source:</b> {sensor_name} (GSD: {clean_xml(analysis.get('resolution', '10m'))})<br/>"
         f"<b>Cloud Cover:</b> Baseline {analysis.get('cloud_percentage_before', 0)}% | Comparative {analysis.get('cloud_percentage_after', 0)}%<br/>"
-        f"<b>AOI Bounding Box:</b> {analysis.get('location', {}).get('bounding_box', [])}<br/>"
+        f"<b>AOI Bounding Box:</b> {clean_xml(str(analysis.get('location', {}).get('bounding_box', [])))}<br/>"
         f"<b>Algorithms:</b> Normalized Difference Indices (NDVI, NDWI, NDBI), Morphological Cluster Filtering, Connected Components."
     )
     story.append(Paragraph(prov_text, body_style))
     story.append(Spacer(1, 6))
 
-    lim_text = "<b>Scientific Limitations:</b> " + " ".join(conf.get("limitations", []))
+    lims = conf.get("limitations", [])
+    clean_lims = " ".join([clean_xml(l) for l in lims]) if lims else "No critical scientific anomalies noted."
+    lim_text = f"<b>Scientific Limitations:</b> {clean_lims}"
     story.append(Paragraph(lim_text, callout_style))
 
     # Build PDF

@@ -3,7 +3,6 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { 
   Layers, 
-  Split, 
   Maximize2, 
   Minimize2,
   Eye, 
@@ -22,9 +21,16 @@ import {
   Activity,
   CheckCircle,
   Clock,
-  Satellite
+  Satellite,
+  ChevronDown,
+  Check,
+  Search,
+  Globe2,
+  ArrowRight
 } from 'lucide-react';
 import { AnalysisContext, ChangeRegion } from '../lib/types';
+import { AVAILABLE_LOCATIONS, AvailableLocation } from '../lib/availableLocations';
+import { getCategoryColor, getCategoryConfig, resolveCategoryKey } from '../lib/colorSystem';
 
 interface MapViewerProps {
   context: AnalysisContext | null;
@@ -47,6 +53,9 @@ interface MapViewerProps {
   timeDrawerOpen?: boolean;
   onToggleTimeDrawer?: () => void;
   onOpenRawSatelliteModal?: () => void;
+  theme?: 'light' | 'dark';
+  onSelectLocation?: (query: string) => void;
+  isAnalyzing?: boolean;
 }
 
 export const MapViewer: React.FC<MapViewerProps> = ({
@@ -70,15 +79,14 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   timeDrawerOpen,
   onToggleTimeDrawer,
   onOpenRawSatelliteModal,
+  theme,
+  onSelectLocation,
+  isAnalyzing,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
 
-  // View modes & indicator toggles (indicators optional: default closed)
-  const [comparisonMode, setComparisonMode] = useState<'swipe' | 'opacity' | 'after_only'>('swipe');
-  const [swipePos, setSwipePos] = useState(50); // percentage 0-100
-  const [isDraggingSwipe, setIsDraggingSwipe] = useState(false);
-  const [opacityVal, setOpacityVal] = useState(1.0); // 0.0 - 1.0
+  // Layer toggles (indicators optional: default closed)
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showPolygons, setShowPolygons] = useState(true);
   const [showIndicators, setShowIndicators] = useState(false);
@@ -93,40 +101,107 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   // Mouse telemetry
   const [mouseCoords, setMouseCoords] = useState<{ lon: number; lat: number } | null>(null);
 
+  // Location Dropdown State (Directly beside Map Title at top-left)
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState<boolean>(false);
+  const [locationFilter, setLocationFilter] = useState<'all' | 'states' | 'uts' | 'global'>('all');
+  const [locationSearch, setLocationSearch] = useState<string>('');
+  const locationDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close location dropdown on click-away
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
+        setLocationDropdownOpen(false);
+      }
+    };
+    if (locationDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [locationDropdownOpen]);
+
+  // Filter available locations based on tab & search
+  const filteredLocations = useMemo(() => {
+    return AVAILABLE_LOCATIONS.filter((loc) => {
+      if (locationFilter === 'all' && !(loc.isState || loc.isUT)) return false;
+      if (locationFilter === 'states' && !loc.isState) return false;
+      if (locationFilter === 'uts' && !loc.isUT) return false;
+      if (locationFilter === 'global' && loc.country === 'India' && (loc.isState || loc.isUT)) return false;
+
+      if (locationSearch.trim()) {
+        const q = locationSearch.toLowerCase();
+        return (
+          loc.name.toLowerCase().includes(q) ||
+          loc.region.toLowerCase().includes(q) ||
+          loc.country.toLowerCase().includes(q) ||
+          loc.tag.toLowerCase().includes(q) ||
+          loc.focus.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [locationFilter, locationSearch]);
+
+  const isLocationActive = (loc: AvailableLocation) => {
+    if (!context?.location?.name) return false;
+    const curr = context.location.name.toLowerCase();
+    return curr.includes(loc.name.toLowerCase()) || loc.name.toLowerCase().includes(curr);
+  };
+
 function matchesCategory(regionCategory: string, filter: string | null): boolean {
   if (!filter || filter === 'all' || filter === 'ALL') return true;
-  const rc = regionCategory.toLowerCase();
-  const f = filter.toLowerCase();
-  if (rc.includes('spectral') || rc.includes('change')) return true;
-  if (f === 'urban' || f === 'urban_growth' || f === 'urban development') {
-    return rc.includes('urban') || rc.includes('built');
-  }
-  if (f === 'vegetation' || f === 'vegetation_loss' || f === 'vegetation loss' || f === 'deforestation') {
-    return rc.includes('loss') || rc.includes('deforest') || (rc.includes('veg') && !rc.includes('gain'));
-  }
-  if (f === 'regrowth' || f === 'vegetation_gain' || f === 'vegetation gain' || f === 'land_clearing') {
-    return rc.includes('gain') || rc.includes('regrowth');
-  }
-  if (f === 'water' || f === 'water_change' || f === 'water reduction') {
-    return rc.includes('water');
-  }
-  return rc.includes(f);
+  const rcKey = resolveCategoryKey(regionCategory);
+  const fKey = resolveCategoryKey(filter);
+  return rcKey === fKey;
 }
 
-  // Calculate indicator counts per category
+  // Calculate indicator counts strictly per canonical category
   const indicatorCounts = useMemo(() => {
-    if (!context?.change_regions) return { vegetation: 0, water: 0, urban: 0, land_use: 0, major: 0, total: 0 };
-    let veg = 0, wat = 0, urb = 0, reg = 0, maj = 0;
+    if (!context?.change_regions) return { deforestation: 0, water: 0, urban: 0, vegetation: 0, total: 0 };
+    let deforest = 0, wat = 0, urb = 0, veg = 0;
     context.change_regions.forEach((r) => {
-      const cat = r.category.toLowerCase();
-      if (cat.includes('loss') || cat.includes('deforest') || (cat.includes('veg') && !cat.includes('gain'))) veg++;
-      else if (cat.includes('water')) wat++;
-      else if (cat.includes('urban') || cat.includes('built')) urb++;
-      else if (cat.includes('gain') || cat.includes('regrowth')) reg++;
-      else maj++;
+      const key = resolveCategoryKey(r.category);
+      if (key === 'deforestation') deforest++;
+      else if (key === 'water') wat++;
+      else if (key === 'urban') urb++;
+      else veg++;
     });
-    return { vegetation: veg, water: wat, urban: urb, land_use: reg, major: maj, total: context.change_regions.length };
+    return { 
+      deforestation: deforest, 
+      water: wat, 
+      urban: urb, 
+      vegetation: veg, 
+      total: context.change_regions.length 
+    };
   }, [context]);
+
+  // Organize and de-clutter indicators: smart spatial de-duplication to prevent overlapping markers
+  const placedIndicators = useMemo(() => {
+    if (!context?.change_regions) return [];
+    const filtered = context.change_regions
+      .filter((r) => matchesCategory(r.category, filteredCategory))
+      .sort((a, b) => b.area_hectares - a.area_hectares);
+
+    const minDistanceDegrees = 0.012; // ~1.3 km minimum distance between pins to prevent crowding
+    const placed: typeof filtered = [];
+
+    for (const region of filtered) {
+      if (placed.length >= 8) break; // Keep map clean and breathable with top 8 prominent spots
+      const [lon, lat] = region.centroid;
+      const tooClose = placed.some((p) => {
+        const [pLon, pLat] = p.centroid;
+        const dLon = lon - pLon;
+        const dLat = lat - pLat;
+        return Math.sqrt(dLon * dLon + dLat * dLat) < minDistanceDegrees;
+      });
+      if (!tooClose) {
+        placed.push(region);
+      }
+    }
+    return placed;
+  }, [context, filteredCategory]);
 
   // Initialize MapLibre GL
   useEffect(() => {
@@ -312,7 +387,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
           type: 'raster',
           source: 'after-imagery',
           paint: {
-            'raster-opacity': comparisonMode === 'swipe' ? 1.0 : opacityVal,
+            'raster-opacity': 1.0,
             'raster-resampling': 'linear',
           },
         }, beforeLayerId);
@@ -351,7 +426,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             id: r.id,
             category: r.category,
             user_label: r.user_label,
-            color: r.color,
+            color: getCategoryColor(r.category),
             area_ha: r.area_hectares,
             delta_ndvi: r.delta_ndvi,
             delta_ndbi: r.delta_ndbi,
@@ -442,7 +517,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
           minzoom: 0,
           maxzoom: 20,
           paint: {
-            'raster-opacity': showAreaNames ? 1.0 : 0.0,
+            'raster-opacity': showAreaNames ? 0.55 : 0.0,
           },
         });
       }
@@ -450,7 +525,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
       // Guarantee labels and vector layers always render above raster imagery
       if (map.getLayer('carto-labels-layer')) {
         map.moveLayer('carto-labels-layer');
-        map.setPaintProperty('carto-labels-layer', 'raster-opacity', showAreaNames ? 1.0 : 0.0);
+        map.setPaintProperty('carto-labels-layer', 'raster-opacity', showAreaNames ? 0.55 : 0.0);
       }
       if (map.getLayer('change-polygons-fill')) map.moveLayer('change-polygons-fill');
       if (map.getLayer('change-polygons-line')) map.moveLayer('change-polygons-line');
@@ -462,9 +537,9 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
     } else {
       map.once('styledata', updateLayers);
     }
-  }, [context, filteredCategory, highlightedRegionIds, fromImageData, toImageData, comparisonMode, opacityVal]);
+  }, [context, filteredCategory, highlightedRegionIds, fromImageData, toImageData]);
 
-  // Manage on-map indicator markers & click popups (ONLY opens when pressed)
+  // Manage on-map indicator markers & click popups (Clean, Aligned, Organized)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -477,42 +552,31 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
       popupRef.current = null;
     }
 
-    if (!showIndicators || !context || !context.change_regions) return;
+    if (!showIndicators || !context || !context.change_regions || placedIndicators.length === 0) return;
 
-    const visibleRegions = context.change_regions
-      .filter((r) => matchesCategory(r.category, filteredCategory))
-      .sort((a, b) => b.area_hectares - a.area_hectares)
-      .slice(0, 12); // Focus on top prominent hotspots in primary AOI
-
-    visibleRegions.forEach((region, index) => {
+    placedIndicators.forEach((region, idx) => {
       const isSelected = selectedRegion?.id === region.id;
       const isHighlighted = highlightedRegionIds ? highlightedRegionIds.includes(region.id) : false;
-      const pinNum = region.indicator_number || (index + 1);
+      const config = getCategoryConfig(region.category);
+      const canonicalColor = config.color;
 
       // Create indicator DOM container
       const el = document.createElement('div');
       el.className = `satquery-map-indicator ${isSelected || isHighlighted ? 'active' : ''}`;
-      el.style.setProperty('--indicator-color', region.color);
-      el.style.setProperty('--indicator-glow', `${region.color}88`);
+      el.style.setProperty('--indicator-color', canonicalColor);
+      el.style.setProperty('--indicator-glow', `${canonicalColor}77`);
 
-      // Category short tag
-      let shortCat = 'Change';
-      const c = region.category.toLowerCase();
-      if (c.includes('loss') || (c.includes('veg') && !c.includes('gain'))) shortCat = 'Vegetation';
-      else if (c.includes('water')) shortCat = 'Water';
-      else if (c.includes('urban') || c.includes('built')) shortCat = 'Urban';
-      else if (c.includes('gain') || c.includes('regrowth')) shortCat = 'Regrowth';
-      else shortCat = 'Alert';
+      const haText = region.area_hectares < 100 
+        ? `${region.area_hectares.toFixed(1)} ha` 
+        : `${Math.round(region.area_hectares).toLocaleString()} ha`;
 
-      const haText = region.area_hectares < 100 ? `${region.area_hectares.toFixed(1)} ha` : `${Math.round(region.area_hectares).toLocaleString()} ha`;
-
-      // Clean compact pin (Matches #1, #2, #3 universally)
+      // Clean, organized color-based indicator capsule with index rank and category
       el.innerHTML = `
-        <div class="indicator-pin-outer" title="Hotspot #${pinNum}: ${shortCat} (${haText}) — Click to inspect">
-          <span class="indicator-ping-ring"></span>
-          <div class="indicator-core-dot">
-            <span>${pinNum}</span>
-          </div>
+        <div class="indicator-capsule" title="#${idx + 1} ${config.shortLabel}: ${region.user_label} (${haText}) — Click to inspect">
+          <span class="indicator-capsule-num">${idx + 1}</span>
+          <span class="indicator-capsule-dot" style="background:${canonicalColor}; box-shadow:0 0 6px ${canonicalColor};"></span>
+          <span class="indicator-capsule-label">${config.shortLabel}</span>
+          <span class="indicator-capsule-ha">${haText}</span>
         </div>
       `;
 
@@ -527,21 +591,29 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
 
         onSelectRegion(region);
 
+        const isDark = document.documentElement.classList.contains('dark');
+        const cardBg = isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.98)';
+        const titleColor = isDark ? '#ffffff' : '#0f172a';
+        const subColor = isDark ? '#cbd5e1' : '#475569';
+        const metaBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+        const metaBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+        const closeColor = isDark ? '#94a3b8' : '#64748b';
+
         const popupHtml = `
-          <div style="background: rgba(10, 16, 28, 0.98); border: 1.5px solid ${region.color}; border-radius: 14px; padding: 14px; min-width: 250px; color: #f1f5f9; box-shadow: 0 16px 40px rgba(0,0,0,0.95); backdrop-filter: blur(16px); font-family: Inter, sans-serif;">
+          <div style="background: ${cardBg}; border: 1.5px solid ${canonicalColor}; border-radius: 14px; padding: 14px; min-width: 250px; color: ${titleColor}; box-shadow: 0 16px 40px rgba(0,0,0,0.25); backdrop-filter: blur(16px); font-family: Inter, sans-serif;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <span style="font-size: 10.5px; font-weight: 800; color: ${region.color}; text-transform: uppercase; letter-spacing: 0.06em; font-family: monospace;">HOTSPOT #${pinNum} · ${shortCat}</span>
-              <button id="close-ind-popup-${region.id}" style="background: none; border: none; color: #94a3b8; font-size: 15px; cursor: pointer; padding: 0 4px; line-height: 1;" title="Close">✕</button>
+              <span style="font-size: 10.5px; font-weight: 800; color: ${canonicalColor}; text-transform: uppercase; letter-spacing: 0.06em; font-family: monospace;">HOTSPOT #${idx + 1} · ${config.shortLabel.toUpperCase()}</span>
+              <button id="close-ind-popup-${region.id}" style="background: none; border: none; color: ${closeColor}; font-size: 15px; cursor: pointer; padding: 0 4px; line-height: 1;" title="Close">✕</button>
             </div>
-            <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #ffffff; line-height: 1.35;">${region.user_label}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; font-family: monospace; background: rgba(255,255,255,0.05); padding: 7px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px;">
-              <div>Area: <strong style="color: #00f0ff;">${haText}</strong></div>
-              <div>ΔNDVI: <strong style="color: ${region.delta_ndvi < 0 ? '#f87171' : '#34d399'};">${region.delta_ndvi > 0 ? '+' : ''}${region.delta_ndvi.toFixed(3)}</strong></div>
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: ${titleColor}; line-height: 1.35;">${region.user_label}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; font-family: monospace; background: ${metaBg}; padding: 7px; border-radius: 8px; border: 1px solid ${metaBorder}; margin-bottom: 8px;">
+              <div>Area: <strong style="color: ${canonicalColor};">${haText}</strong></div>
+              <div>ΔNDVI: <strong style="color: ${region.delta_ndvi < 0 ? '#ef4444' : '#10b981'};">${region.delta_ndvi > 0 ? '+' : ''}${region.delta_ndvi.toFixed(3)}</strong></div>
             </div>
-            <div style="font-size: 10.5px; color: #cbd5e1; margin-bottom: 10px; line-height: 1.4;">${region.simple_explanation || region.technical_evidence || ''}</div>
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8; font-family: monospace; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08);">
-              <span>Confidence: <strong style="color: #34d399;">${region.confidence_pct}%</strong></span>
-              <span style="color: #00f0ff; font-weight: 600;">ACTIVE HOTSPOT</span>
+            <div style="font-size: 10.5px; color: ${subColor}; margin-bottom: 10px; line-height: 1.4;">${region.simple_explanation || region.technical_evidence || ''}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: ${closeColor}; font-family: monospace; padding-top: 6px; border-top: 1px solid ${metaBorder};">
+              <span>Confidence: <strong style="color: #10b981;">${region.confidence_pct}%</strong></span>
+              <span style="color: ${canonicalColor}; font-weight: 700;">ACTIVE HOTSPOT</span>
             </div>
           </div>
         `;
@@ -589,16 +661,16 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
 
       markersRef.current.push(marker);
     });
-  }, [context, showIndicators, filteredCategory, selectedRegion, highlightedRegionIds]);
+  }, [context, showIndicators, placedIndicators, selectedRegion, highlightedRegionIds]);
 
-  // Manage Area Names & Place Labels overlay on satellite map
+  // Manage Area Names & Place Labels overlay on satellite map (Organized, spaced, non-overlapping)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // 1. Toggle Carto labels raster layer opacity on satellite imagery
+    // 1. Toggle Carto labels raster layer opacity on satellite imagery (soft, non-intrusive)
     if (map.isStyleLoaded() && map.getLayer('carto-labels-layer')) {
-      map.setPaintProperty('carto-labels-layer', 'raster-opacity', showAreaNames ? 1.0 : 0.0);
+      map.setPaintProperty('carto-labels-layer', 'raster-opacity', showAreaNames ? 0.55 : 0.0);
     }
 
     // 2. Clean up previous area badges
@@ -607,20 +679,20 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
 
     if (!showAreaNames || !context) return;
 
-    // A. Main AOI Representation Badge (pinned at top center of AOI)
+    // A. Main AOI Representation Badge (pinned cleanly near top center of AOI with safe margin)
     const bbox = context.location.bounding_box;
     const aoiTopCenter: [number, number] = [
       (bbox[0] + bbox[2]) / 2,
-      bbox[3] - (bbox[3] - bbox[1]) * 0.03, // slightly inset from top edge
+      bbox[3] - (bbox[3] - bbox[1]) * 0.04, // clean safe inset from top boundary
     ];
 
     const aoiBadgeEl = document.createElement('div');
     aoiBadgeEl.className = 'satquery-area-badge';
     aoiBadgeEl.title = `${context.location.name} (${Math.round(context.total_aoi_hectares || 0).toLocaleString()} ha) — Click to frame AOI`;
     aoiBadgeEl.innerHTML = `
-      <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00f0ff; box-shadow: 0 0 10px #00f0ff;"></span>
-      <span style="font-size:11px; font-weight:700; color:#ffffff; letter-spacing:0.02em;">${context.location.name}</span>
-      <span style="font-size:9.5px; font-weight:700; color:#00f0ff; background:rgba(0,240,255,0.15); padding:1px 6px; border-radius:4px; border:1px solid rgba(0,240,255,0.3);">
+      <span class="satquery-badge-dot"></span>
+      <span class="satquery-badge-name">${context.location.name}</span>
+      <span class="satquery-badge-ha">
         ${Math.round(context.total_aoi_hectares || 0).toLocaleString()} HA
       </span>
     `;
@@ -643,29 +715,55 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
 
     areaMarkersRef.current.push(aoiMarker);
 
-    // B. Real Specific Places & Landmarks Representation Badges in the Area
-    // (User requested: Area names means specific places in the area, not change categories)
-    const places = context.location.landmarks || [];
-    places.forEach((place) => {
+    // B. Real Specific Places & Landmarks: Max 4, spatially spaced, avoiding overlap
+    const isDarkMode = theme === 'dark' || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
+    const rawPlaces = context.location.landmarks || [];
+
+    // Filter to at most 4 places with minimum spatial separation so names never crowd
+    const minSeparation = Math.max(
+      (bbox[2] - bbox[0]) * 0.18,
+      (bbox[3] - bbox[1]) * 0.18
+    );
+    const spacedPlaces: typeof rawPlaces = [];
+
+    for (const place of rawPlaces) {
+      if (spacedPlaces.length >= 4) break;
+      const isCloseToExisting = spacedPlaces.some((sp) => {
+        const dx = sp.longitude - place.longitude;
+        const dy = sp.latitude - place.latitude;
+        return Math.sqrt(dx * dx + dy * dy) < minSeparation;
+      });
+      // Also ensure distance from the AOI top center badge
+      const dToAoiTop = Math.sqrt(
+        Math.pow(place.longitude - aoiTopCenter[0], 2) +
+        Math.pow(place.latitude - aoiTopCenter[1], 2)
+      );
+      if (!isCloseToExisting && dToAoiTop > minSeparation * 0.5) {
+        spacedPlaces.push(place);
+      }
+    }
+
+    spacedPlaces.forEach((place) => {
       const placeBadgeEl = document.createElement('div');
       placeBadgeEl.className = 'satquery-place-badge';
-      placeBadgeEl.title = `${place.name} (${place.category || 'landmark'}) — Click to zoom`;
+      const catLabel = place.category || 'landmark';
+      placeBadgeEl.title = `${place.name} (${catLabel}) — Click to zoom`;
 
-      const dotColor = place.category === 'waterbody' ? '#38bdf8' : place.category === 'suburb' ? '#a78bfa' : '#00f0ff';
-      const catLabel = (place.category || 'Place').toUpperCase();
+      const dotColor = place.category === 'waterbody' 
+        ? '#0284c7' 
+        : place.category === 'suburb' 
+        ? (isDarkMode ? '#a78bfa' : '#7c3aed') 
+        : (isDarkMode ? '#38bdf8' : '#2563eb');
 
       placeBadgeEl.innerHTML = `
-        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotColor}; box-shadow: 0 0 6px ${dotColor};"></span>
-        <span style="font-size:10.5px; font-weight:700; color:#f8fafc; letter-spacing:0.01em; white-space:nowrap;">${place.name}</span>
-        <span style="font-size:8.5px; font-weight:700; color:${dotColor}; background:rgba(0,240,255,0.12); padding:1px 4.5px; border-radius:3px; border:1px solid ${dotColor}40;">
-          ${catLabel}
-        </span>
+        <span class="satquery-place-dot" style="background:${dotColor}; box-shadow: 0 0 5px ${dotColor};"></span>
+        <span class="satquery-place-name">${place.name}</span>
       `;
 
       placeBadgeEl.addEventListener('click', () => {
         map.flyTo({
           center: [place.longitude, place.latitude],
-          zoom: 15.0,
+          zoom: 14.8,
           speed: 1.2,
           curve: 1.4,
           essential: true,
@@ -674,14 +772,14 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
 
       const placeMarker = new maplibregl.Marker({
         element: placeBadgeEl,
-        anchor: 'bottom',
+        anchor: 'center',
       })
         .setLngLat([place.longitude, place.latitude])
         .addTo(map);
 
       areaMarkersRef.current.push(placeMarker);
     });
-  }, [showAreaNames, context]);
+  }, [showAreaNames, context, theme]);
 
   // Update polygon visibility
   useEffect(() => {
@@ -699,14 +797,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
     }
   }, [showPolygons, showHeatmap]);
 
-  // Update opacity when slider moves
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    if (map.getLayer('after-imagery-layer') && comparisonMode === 'opacity') {
-      map.setPaintProperty('after-imagery-layer', 'raster-opacity', opacityVal);
-    }
-  }, [opacityVal, comparisonMode]);
+
 
   // Smooth camera flyTo on region selection or AI zoom target
   useEffect(() => {
@@ -731,40 +822,6 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
       });
     }
   }, [selectedRegion, zoomTarget]);
-
-  // Non-blocking drag handlers for swipe split handle
-  const handleStartDrag = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    setIsDraggingSwipe(true);
-  };
-
-  useEffect(() => {
-    if (!isDraggingSwipe) return;
-
-    const handleMove = (e: MouseEvent | TouchEvent) => {
-      if (!mapContainerRef.current) return;
-      const rect = mapContainerRef.current.getBoundingClientRect();
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      const pct = Math.max(5, Math.min(95, ((clientX - rect.left) / rect.width) * 100));
-      setSwipePos(pct);
-    };
-
-    const handleEnd = () => {
-      setIsDraggingSwipe(false);
-    };
-
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleEnd);
-    window.addEventListener('touchmove', handleMove);
-    window.addEventListener('touchend', handleEnd);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleEnd);
-      window.removeEventListener('touchmove', handleMove);
-      window.removeEventListener('touchend', handleEnd);
-    };
-  }, [isDraggingSwipe]);
 
   // Zoom control helpers
   const handleZoomIn = () => {
@@ -793,77 +850,216 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden select-none bg-space-950">
+    <div className="relative w-full h-full overflow-hidden select-none bg-slate-100 dark:bg-zinc-950">
       {/* Primary Map Canvas */}
       <div ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Swipe Comparison Clip Plane */}
-      {comparisonMode === 'swipe' && context && (
-        <>
-          {/* Draggable vertical divider */}
-          <div
-            className="absolute top-0 bottom-0 z-20 w-1 bg-orbit-cyan shadow-[0_0_16px_rgba(0,240,255,0.7)] pointer-events-none"
-            style={{ left: `${swipePos}%` }}
-          >
-            <div
-              onMouseDown={handleStartDrag}
-              onTouchStart={handleStartDrag}
-              className="h-9 px-3 -ml-8 top-1/2 -translate-y-1/2 absolute rounded-full bg-[#090e17]/95 border-2 border-orbit-cyan shadow-[0_0_22px_rgba(0,240,255,0.45)] flex items-center justify-center space-x-1 text-orbit-cyan hover:scale-105 active:scale-95 transition-all cursor-ew-resize pointer-events-auto backdrop-blur-md"
-              title="Drag to compare Before and After satellite passes"
-            >
-              <Split className="w-3.5 h-3.5 rotate-90" />
-              <span className="text-[10px] font-bold font-telemetry tracking-wider">SWIPE</span>
-            </div>
-          </div>
-        </>
-      )}
+
 
       {/* On-Map Observation Telemetry HUD Indicator Bar */}
       {context && (
-        <div className="absolute top-4 left-4 z-20 flex flex-col space-y-1.5 pointer-events-none max-w-[calc(100%-120px)]">
+        <div className={`absolute top-4 left-4 ${locationDropdownOpen ? 'z-50' : 'z-20'} flex flex-col space-y-1.5 pointer-events-none max-w-[calc(100%-120px)]`}>
           {/* Top Status & Scale Indicator Badge */}
-          <div className="figma-card px-3.5 py-2 border border-orbit-cyan/40 shadow-2xl backdrop-blur-xl flex items-center space-x-3 pointer-events-auto">
-            <div className="flex items-center space-x-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-orbit-cyan animate-pulse shrink-0" />
-              <span className="font-telemetry font-bold text-xs text-white uppercase tracking-wider truncate max-w-[140px] sm:max-w-none">
-                {context.location.name}
-              </span>
-              <span className="text-[9.5px] font-telemetry px-1.5 py-0.5 rounded bg-orbit-cyan/15 text-orbit-cyan border border-orbit-cyan/30 uppercase font-semibold shrink-0">
-                {context.location.location_type || 'AOI'}
-              </span>
+          <div className="relative px-3.5 py-2 rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-slate-200/80 dark:border-zinc-800 shadow-xl backdrop-blur-xl flex items-center space-x-3 pointer-events-auto text-slate-800 dark:text-slate-100 z-50">
+            {/* Interactive Location Name & Dropdown Trigger */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
+                className={`group flex items-center space-x-2 px-2.5 py-1 -my-1 rounded-xl transition-all border cursor-pointer select-none ${
+                  locationDropdownOpen
+                    ? 'bg-blue-50/90 dark:bg-blue-950/60 border-blue-300 dark:border-blue-700/80 ring-2 ring-blue-500/20 shadow-xs'
+                    : 'bg-transparent hover:bg-slate-100/90 dark:hover:bg-zinc-800/80 border-transparent hover:border-slate-200 dark:hover:border-zinc-700'
+                }`}
+                title="Click to select another satellite observation location"
+                aria-haspopup="true"
+                aria-expanded={locationDropdownOpen}
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                <span className="font-telemetry font-bold text-xs uppercase tracking-wider truncate max-w-[130px] sm:max-w-[200px] text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  {context.location.name}
+                </span>
+                <span className="text-[9.5px] font-telemetry px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30 uppercase font-semibold shrink-0">
+                  {context.location.location_type || 'AOI'}
+                </span>
+
+                {/* Clear Dropdown Arrow immediately beside location name */}
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-slate-100 group-hover:bg-blue-100 dark:bg-zinc-800 dark:group-hover:bg-blue-950 text-slate-600 group-hover:text-blue-600 dark:text-zinc-300 dark:group-hover:text-blue-400 transition-all shrink-0 ml-0.5">
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${locationDropdownOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''}`} />
+                </span>
+
+                {isAnalyzing && (
+                  <Activity className="w-3 h-3 text-blue-600 dark:text-blue-400 animate-spin shrink-0 ml-1" />
+                )}
+              </button>
+
+              {/* Floating Location Dropdown Menu */}
+              {locationDropdownOpen && (
+                <div
+                  ref={locationDropdownRef}
+                  className="absolute top-full left-0 mt-2 z-50 w-88 sm:w-[440px] max-w-[calc(100vw-2.5rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-2xl backdrop-blur-2xl p-3.5 font-sans animate-in fade-in zoom-in-95 duration-150 text-slate-900 dark:text-slate-100 pointer-events-auto"
+                >
+                  {/* Dropdown Header */}
+                  <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100 dark:border-zinc-800">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                        <Globe2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                          <span>India-Wide Satellite Registry</span>
+                          <span className="text-[10px] font-normal text-slate-400">🇮🇳</span>
+                        </div>
+                        <div className="text-[10.5px] text-slate-500 dark:text-zinc-400 font-telemetry">
+                          All 28 States &amp; 8 Union Territories
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 font-semibold">
+                      {filteredLocations.length} Places
+                    </span>
+                  </div>
+
+                  {/* Search Filter Bar */}
+                  <div className="relative mb-2.5">
+                    <Search className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 absolute left-2.5 top-2.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={locationSearch}
+                      onChange={(e) => setLocationSearch(e.target.value)}
+                      placeholder="Search any State, UT, capital, or landmark..."
+                      className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:outline-none focus:border-blue-500 text-slate-900 dark:text-white font-sans"
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div className="flex items-center space-x-1 mb-2.5 overflow-x-auto pb-1 scrollbar-none">
+                    {[
+                      { id: 'all', label: 'All India (36)' },
+                      { id: 'states', label: 'States (28)' },
+                      { id: 'uts', label: 'Union Territories (8)' },
+                      { id: 'global', label: 'Global (6)' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setLocationFilter(tab.id as any)}
+                        className={`px-2.5 py-1 rounded-lg text-[10.5px] font-mono whitespace-nowrap transition-all cursor-pointer ${
+                          locationFilter === tab.id
+                            ? 'bg-blue-600 text-white font-bold shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-300'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Locations Scroll List */}
+                  <div className="max-h-80 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                    {filteredLocations.map((loc) => {
+                      const isActive = isLocationActive(loc);
+                      return (
+                        <button
+                          key={loc.id}
+                          type="button"
+                          onClick={() => {
+                            if (!isAnalyzing && onSelectLocation) {
+                              onSelectLocation(loc.query);
+                              setLocationDropdownOpen(false);
+                            }
+                          }}
+                          disabled={isAnalyzing}
+                          className={`w-full text-left p-2 rounded-xl transition-all flex items-center justify-between group cursor-pointer ${
+                            isActive
+                              ? 'bg-blue-50/90 dark:bg-blue-950/50 border border-blue-400 dark:border-blue-700 shadow-xs'
+                              : 'hover:bg-slate-50 dark:hover:bg-zinc-800/80 border border-transparent'
+                          } ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                            <img
+                              src={loc.thumbnail}
+                              alt={loc.name}
+                              className="w-9 h-9 rounded-lg object-cover border border-slate-200 dark:border-zinc-700 shrink-0 shadow-xs"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center space-x-1.5 flex-wrap gap-y-0.5">
+                                <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                  {loc.name}
+                                </span>
+                                <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded uppercase font-semibold shrink-0 ${
+                                  loc.isState
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                    : loc.isUT
+                                    ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                                    : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700'
+                                }`}>
+                                  {loc.tag}
+                                </span>
+                              </div>
+                              <div className="text-[10.5px] text-slate-500 dark:text-zinc-400 truncate flex items-center space-x-1 mt-0.5">
+                                <span>{loc.flag}</span>
+                                <span className="font-medium text-slate-600 dark:text-zinc-300">{loc.region}</span>
+                                <span>•</span>
+                                <span className="truncate">{loc.focus}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {isActive ? (
+                            <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-100/70 dark:bg-blue-500/20 px-2 py-0.5 rounded-full flex items-center space-x-1 shrink-0 ml-2 border border-blue-200 dark:border-blue-500/30">
+                              <Check className="w-3 h-3" />
+                              <span>CURRENT</span>
+                            </span>
+                          ) : (
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                          )}
+                        </button>
+                      );
+                    })}
+
+                    {filteredLocations.length === 0 && (
+                      <div className="py-8 text-center text-xs text-slate-500 dark:text-zinc-400">
+                        No locations match "{locationSearch}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="h-3 w-px bg-slate-700 hidden sm:block" />
+            <div className="h-3 w-px bg-slate-200 dark:bg-zinc-700 hidden sm:block" />
 
-            <div className="hidden sm:flex items-center space-x-3 text-[11px] font-telemetry text-slate-300">
+            <div className="hidden sm:flex items-center space-x-3 text-[11px] font-telemetry text-slate-600 dark:text-slate-300">
               <span title="Total AOI Area">
-                📐 <strong className="text-white">{context.total_aoi_hectares.toLocaleString()} ha</strong>
+                📐 <strong className="text-slate-900 dark:text-white">{context.total_aoi_hectares.toLocaleString()} ha</strong>
               </span>
               <span title="Satellite Sensor">
-                🛰️ <span className="text-slate-400">Sentinel-2 (10m)</span>
+                🛰️ <span className="text-slate-500 dark:text-slate-400">Sentinel-2 (10m)</span>
               </span>
               <span title="Active Detected Change Indicators">
-                📍 <strong className="text-orbit-cyan">{indicatorCounts.total}</strong> Indicators on Map
+                📍 <strong className="text-blue-600 dark:text-blue-400">{indicatorCounts.total}</strong> Indicators on Map
               </span>
             </div>
           </div>
 
           {/* Temporal Baseline & Observation Strip */}
-          <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-telemetry text-slate-400 pointer-events-auto">
+          <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-telemetry text-slate-600 dark:text-slate-400 pointer-events-auto">
             {(fromYear || toYear) ? (
-              <div className="px-3 py-1 rounded-xl bg-[#090e17]/95 border border-orbit-cyan/60 text-orbit-cyan shadow-[0_0_16px_rgba(0,240,255,0.25)] backdrop-blur-md flex items-center space-x-2">
-                <span className="w-2 h-2 rounded-full bg-orbit-cyan animate-ping" />
+              <div className="px-3 py-1 rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-blue-300 dark:border-blue-500/60 text-blue-700 dark:text-blue-300 shadow-md backdrop-blur-md flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
                 <span>
-                  PASSES: <strong className="text-white font-mono text-xs">{fromYear || (context.actual_before_date ? context.actual_before_date.slice(0, 4) : 2021)}</strong> {fromImageData ? `(${fromImageData.date})` : ''} ➔ <strong className="text-white font-mono text-xs">{toYear || (context.actual_after_date ? context.actual_after_date.slice(0, 4) : 2026)}</strong> {toImageData ? `(${toImageData.date})` : ''}
+                  PASSES: <strong className="text-slate-900 dark:text-white font-mono text-xs">{fromYear || (context.actual_before_date ? context.actual_before_date.slice(0, 4) : 2021)}</strong> {fromImageData ? `(${fromImageData.date})` : ''} ➔ <strong className="text-slate-900 dark:text-white font-mono text-xs">{toYear || (context.actual_after_date ? context.actual_after_date.slice(0, 4) : 2026)}</strong> {toImageData ? `(${toImageData.date})` : ''}
                 </span>
                 {(isLoadingFromYear || isLoadingToYear) && (
-                  <Activity className="w-3.5 h-3.5 animate-spin text-orbit-cyan" />
+                  <Activity className="w-3.5 h-3.5 animate-spin text-blue-500" />
                 )}
                 {onResetYears && (
                   <button
                     type="button"
                     onClick={onResetYears}
-                    className="ml-2 px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 text-[10px] border border-rose-500/40 font-bold transition-all"
+                    className="ml-2 px-2 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-500/30 text-[10px] border border-rose-200 dark:border-rose-500/40 font-bold transition-all"
                     title="Return to initial analysis baseline vs comparative observation"
                   >
                     ✕ Reset View
@@ -872,37 +1068,140 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
               </div>
             ) : (
               <>
-                <span className="px-2 py-0.5 rounded-md bg-[#090e17]/90 border border-slate-700/80 text-slate-300 shadow-sm backdrop-blur-md flex items-center space-x-1.5">
+                <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur-md flex items-center space-x-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                   <span>Baseline:</span>
-                  <strong className="text-white">{context.actual_before_date}</strong>
+                  <strong className="text-slate-900 dark:text-white">{context.actual_before_date}</strong>
                 </span>
-                <span className="text-slate-500 font-mono">➔</span>
-                <span className="px-2 py-0.5 rounded-md bg-[#090e17]/90 border border-orbit-cyan/40 text-orbit-cyan shadow-sm backdrop-blur-md flex items-center space-x-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-orbit-cyan animate-ping" />
+                <span className="text-slate-400 dark:text-slate-500 font-mono">➔</span>
+                <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-400 shadow-sm backdrop-blur-md flex items-center space-x-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
                   <span>Pass:</span>
-                  <strong className="text-white">{context.actual_after_date}</strong>
+                  <strong className="text-slate-900 dark:text-white">{context.actual_after_date}</strong>
                 </span>
-                <span className="px-2 py-0.5 rounded-md bg-[#090e17]/90 border border-emerald-500/40 text-emerald-400 shadow-sm backdrop-blur-md hidden md:inline-flex items-center space-x-1">
-                  <CheckCircle className="w-3 h-3 text-emerald-400" />
+                <span className="px-2 py-0.5 rounded-md bg-white/95 dark:bg-zinc-900/90 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-400 shadow-sm backdrop-blur-md hidden md:inline-flex items-center space-x-1">
+                  <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                   <span>100% Usable Clear Pixels</span>
                 </span>
               </>
+            )}
+          </div>
+
+          {/* Row 3: Category Color Legend Bar — Embedded cleanly in HUD so it NEVER overlaps! */}
+          <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-slate-200/80 dark:border-zinc-800 backdrop-blur-xl shadow-xl text-[11px] font-mono text-slate-700 dark:text-slate-300 pointer-events-auto">
+            <span className="text-[10px] text-slate-400 uppercase px-2 font-bold font-telemetry">CATEGORIES:</span>
+
+            {/* 1. Deforestation / Loss (Red #ef4444) */}
+            <button
+              type="button"
+              onClick={() => onFilterCategory?.(filteredCategory === 'deforestation' ? null : 'deforestation')}
+              className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
+                filteredCategory === 'deforestation' 
+                  ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-700 font-bold shadow-xs' 
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
+              }`}
+              title="Filter to Deforestation / Canopy Loss (Red)"
+            >
+              <div className="relative shrink-0">
+                <img 
+                  src="/thumbnails/category_deforestation.jpg" 
+                  alt="Deforestation" 
+                  className="w-5 h-5 rounded-md object-cover border border-rose-500 shadow-xs" 
+                />
+                <span className="w-2 h-2 rounded-full bg-rose-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
+              </div>
+              <span>Deforestation ({indicatorCounts.deforestation})</span>
+            </button>
+
+            {/* 2. Urban Growth / Construction (Orange #f97316) */}
+            <button
+              type="button"
+              onClick={() => onFilterCategory?.(filteredCategory === 'urban' ? null : 'urban')}
+              className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
+                filteredCategory === 'urban' 
+                  ? 'bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-700 font-bold shadow-xs' 
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
+              }`}
+              title="Filter to Urban Expansion & Construction (Orange)"
+            >
+              <div className="relative shrink-0">
+                <img 
+                  src="/thumbnails/category_urban.jpg" 
+                  alt="Urban Growth" 
+                  className="w-5 h-5 rounded-md object-cover border border-orange-500 shadow-xs" 
+                />
+                <span className="w-2 h-2 rounded-full bg-orange-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
+              </div>
+              <span>Urban ({indicatorCounts.urban})</span>
+            </button>
+
+            {/* 3. Water Bodies / Hydrology (Blue #0284c7) */}
+            <button
+              type="button"
+              onClick={() => onFilterCategory?.(filteredCategory === 'water' ? null : 'water')}
+              className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
+                filteredCategory === 'water' 
+                  ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-700 font-bold shadow-xs' 
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
+              }`}
+              title="Filter to Water Bodies & Hydrology (Blue)"
+            >
+              <div className="relative shrink-0">
+                <img 
+                  src="/thumbnails/category_water.jpg" 
+                  alt="Water" 
+                  className="w-5 h-5 rounded-md object-cover border border-blue-500 shadow-xs" 
+                />
+                <span className="w-2 h-2 rounded-full bg-blue-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
+              </div>
+              <span>Water ({indicatorCounts.water})</span>
+            </button>
+
+            {/* 4. Vegetation Growth / Regrowth (Green #10b981) */}
+            <button
+              type="button"
+              onClick={() => onFilterCategory?.(filteredCategory === 'vegetation' ? null : 'vegetation')}
+              className={`flex items-center space-x-2 px-2.5 py-1 rounded-xl transition-all cursor-pointer border ${
+                filteredCategory === 'vegetation' 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700 font-bold shadow-xs' 
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border-transparent'
+              }`}
+              title="Filter to Vegetation Regrowth & Crops (Green)"
+            >
+              <div className="relative shrink-0">
+                <img 
+                  src="/thumbnails/category_regrowth.jpg" 
+                  alt="Vegetation Regrowth" 
+                  className="w-5 h-5 rounded-md object-cover border border-emerald-500 shadow-xs" 
+                />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-zinc-900" />
+              </div>
+              <span>Vegetation ({indicatorCounts.vegetation})</span>
+            </button>
+
+            {filteredCategory && (
+              <button
+                type="button"
+                onClick={() => onFilterCategory?.(null)}
+                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-blue-600 dark:text-blue-400 text-[10px] font-bold border border-slate-200 dark:border-zinc-700 ml-1"
+              >
+                RESET
+              </button>
             )}
           </div>
         </div>
       )}
 
       {/* Floating Zoom & Maximize Controls Toolbar */}
-      <div className="absolute top-16 right-4 z-30 flex flex-col space-y-1 figma-card p-1 shadow-2xl">
+      <div className="absolute top-16 right-4 z-30 flex flex-col space-y-1 bg-white/95 dark:bg-zinc-900/95 p-1 rounded-2xl shadow-xl border border-slate-200/80 dark:border-zinc-800 backdrop-blur-xl">
         {onToggleMaximizeMap && (
           <button
             type="button"
             onClick={onToggleMaximizeMap}
-            className={`h-8 w-8 rounded-lg flex items-center justify-center transition-all ${
+            className={`h-8 w-8 rounded-xl flex items-center justify-center transition-all ${
               isMapMaximized
-                ? 'bg-orbit-cyan text-[#070b13] shadow-[0_0_12px_rgba(0,240,255,0.7)] font-bold'
-                : 'bg-[#111827]/70 hover:bg-orbit-cyan/20 text-slate-300 hover:text-orbit-cyan border border-transparent hover:border-orbit-cyan/40'
+                ? 'bg-blue-600 text-white shadow-md font-bold'
+                : 'bg-slate-100 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400'
             }`}
             title={isMapMaximized ? "Restore sidebars (Normal view)" : "Maximize Map Area (Full width & height)"}
           >
@@ -912,7 +1211,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         <button
           type="button"
           onClick={handleZoomIn}
-          className="h-8 w-8 rounded-lg bg-[#111827]/70 hover:bg-orbit-cyan/20 text-slate-300 hover:text-orbit-cyan flex items-center justify-center transition-colors border border-transparent hover:border-orbit-cyan/40"
+          className="h-8 w-8 rounded-xl bg-slate-100 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-colors"
           title="Zoom In (+)"
         >
           <Plus className="w-4 h-4" />
@@ -920,7 +1219,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         <button
           type="button"
           onClick={handleZoomOut}
-          className="h-8 w-8 rounded-lg bg-[#111827]/70 hover:bg-orbit-cyan/20 text-slate-300 hover:text-orbit-cyan flex items-center justify-center transition-colors border border-transparent hover:border-orbit-cyan/40"
+          className="h-8 w-8 rounded-xl bg-slate-100 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-colors"
           title="Zoom Out (-)"
         >
           <Minus className="w-4 h-4" />
@@ -928,7 +1227,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         <button
           type="button"
           onClick={handleResetView}
-          className="h-8 w-8 rounded-lg bg-[#111827]/70 hover:bg-orbit-cyan/20 text-slate-300 hover:text-orbit-cyan flex items-center justify-center transition-colors border border-transparent hover:border-orbit-cyan/40"
+          className="h-8 w-8 rounded-xl bg-slate-100 dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-colors"
           title="Reset View to AOI"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -940,11 +1239,11 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         <button
           type="button"
           onClick={onExplainMap}
-          className="group px-4 py-2 rounded-full bg-[#090e17]/90 hover:bg-[#10192a] border border-orbit-cyan/60 hover:border-orbit-cyan text-orbit-cyan shadow-[0_0_20px_rgba(0,240,255,0.3)] hover:shadow-[0_0_26px_rgba(0,240,255,0.55)] flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 backdrop-blur-xl"
+          className="group px-4 py-2 rounded-full bg-white/95 dark:bg-zinc-900/95 hover:bg-blue-50 dark:hover:bg-zinc-800 border border-blue-200 dark:border-blue-500/40 hover:border-blue-500 text-blue-600 dark:text-blue-400 shadow-lg flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 backdrop-blur-xl"
         >
-          <div className="w-2 h-2 rounded-full bg-orbit-cyan animate-ping group-hover:scale-125" />
-          <Sparkles className="w-3.5 h-3.5 text-orbit-cyan" />
-          <span className="font-telemetry font-bold text-xs tracking-wider text-slate-100 group-hover:text-white">
+          <div className="w-2 h-2 rounded-full bg-blue-500 animate-ping group-hover:scale-125" />
+          <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span className="font-telemetry font-bold text-xs tracking-wider text-slate-900 dark:text-white">
             EXPLAIN THIS MAP
           </span>
         </button>
@@ -953,55 +1252,7 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
       {/* Floating Map Controls Toolbar */}
       <div className="absolute bottom-6 left-4 z-20 flex flex-col space-y-2">
         {/* Layer Toggles Panel */}
-        <div className="figma-card rounded-2xl p-2 flex items-center space-x-2 shadow-2xl border border-slate-700/60 backdrop-blur-xl">
-          {/* Comparison Mode Toggle */}
-          <button
-            type="button"
-            onClick={() => setComparisonMode(comparisonMode === 'swipe' ? 'opacity' : 'swipe')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all ${
-              comparisonMode === 'swipe'
-                ? 'bg-orbit-cyan/20 text-orbit-cyan border border-orbit-cyan/50 shadow-sm'
-                : 'text-slate-300 hover:bg-white/5 border border-transparent'
-            }`}
-            title="Toggle Split-Swipe Comparison"
-          >
-            <Split className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline font-semibold">SWIPE</span>
-          </button>
-
-          {/* Opacity slider if in opacity mode */}
-          {comparisonMode === 'opacity' && (
-            <div className="flex items-center space-x-2 px-2 border-l border-slate-700">
-              <span className="text-[10px] font-telemetry text-slate-400">OPACITY:</span>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={opacityVal}
-                onChange={(e) => setOpacityVal(Number(e.target.value))}
-                className="w-16 accent-orbit-cyan h-1 cursor-pointer"
-              />
-            </div>
-          )}
-
-          {/* Swipe Split slider if in swipe mode */}
-          {comparisonMode === 'swipe' && (
-            <div className="flex items-center space-x-2 px-2 border-l border-slate-700">
-              <span className="text-[10px] font-telemetry text-slate-400">SPLIT:</span>
-              <input
-                type="range"
-                min="5"
-                max="95"
-                value={swipePos}
-                onChange={(e) => setSwipePos(Number(e.target.value))}
-                className="w-20 accent-orbit-cyan h-1 cursor-pointer"
-              />
-              <span className="text-[10px] font-telemetry text-orbit-cyan w-6 font-mono">{Math.round(swipePos)}%</span>
-            </div>
-          )}
-
-          <div className="h-4 w-px bg-slate-700 mx-1" />
+        <div className="rounded-2xl p-2 flex items-center space-x-2 shadow-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl text-slate-700 dark:text-slate-300">
 
           {/* Time Changes Toggle Button */}
           {onToggleTimeDrawer && (
@@ -1010,14 +1261,14 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
               onClick={onToggleTimeDrawer}
               className={`px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all ${
                 timeDrawerOpen
-                  ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/60 shadow-sm font-bold'
-                  : 'text-slate-300 hover:bg-white/5 border border-transparent'
+                  ? 'bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/50 shadow-sm font-bold'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-transparent'
               }`}
               title="Toggle Time Changes / Observation Passes (2020–2026)"
             >
-              <Clock className="w-3.5 h-3.5 text-cyan-400" />
+              <Clock className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
               <span className="hidden sm:inline font-semibold">TIME CHANGES</span>
-              <span className="text-[10px] font-mono text-cyan-300 bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-500/30">
+              <span className="text-[10px] font-mono text-orange-700 dark:text-orange-300 bg-orange-100/70 dark:bg-orange-500/20 px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-500/30 font-semibold">
                 {fromYear || (context?.actual_before_date ? context.actual_before_date.slice(0, 4) : 2021)}➔{toYear || (context?.actual_after_date ? context.actual_after_date.slice(0, 4) : 2026)}
               </span>
             </button>
@@ -1028,16 +1279,16 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             <button
               type="button"
               onClick={onOpenRawSatelliteModal}
-              className="px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all bg-gradient-to-r from-orbit-cyan/20 to-emerald-500/20 hover:from-orbit-cyan/35 hover:to-emerald-500/35 text-orbit-cyan hover:text-white border border-orbit-cyan/50 shadow-[0_0_12px_rgba(0,240,255,0.3)] font-bold active:scale-95"
+              className="px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm font-bold active:scale-95"
               title="Open Raw Satellite Timeline Studio: Side-by-side pure optical satellite imagery with timeline and place choice"
             >
-              <Satellite className="w-3.5 h-3.5 text-orbit-cyan animate-pulse" />
+              <Satellite className="w-3.5 h-3.5 text-white animate-pulse" />
               <span className="hidden sm:inline">RAW SATELLITE (SIDE-BY-SIDE)</span>
               <span className="sm:hidden">RAW SATS</span>
             </button>
           )}
 
-          <div className="h-4 w-px bg-slate-700 mx-1" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
 
           {/* On-Map Indicators Toggle Button */}
           <button
@@ -1045,8 +1296,8 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             onClick={() => setShowIndicators(!showIndicators)}
             className={`px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all ${
               showIndicators
-                ? 'bg-orbit-cyan/20 text-orbit-cyan border border-orbit-cyan/50 shadow-sm'
-                : 'text-slate-400 hover:bg-white/5 border border-transparent'
+                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/50 shadow-sm font-semibold'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-transparent'
             }`}
             title="Toggle On-Map Indicator Pins & Badges"
           >
@@ -1060,12 +1311,12 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             onClick={() => setShowHeatmap(!showHeatmap)}
             className={`px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all ${
               showHeatmap
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-sm'
-                : 'text-slate-400 hover:bg-white/5 border border-transparent'
+                ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/50 shadow-sm font-semibold'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-transparent'
             }`}
             title="Toggle Continuous Change Heatmap"
           >
-            <Flame className="w-3.5 h-3.5" />
+            <Flame className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
             <span className="hidden sm:inline font-semibold">HEATMAP</span>
           </button>
 
@@ -1075,12 +1326,12 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             onClick={() => setShowPolygons(!showPolygons)}
             className={`px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all ${
               showPolygons
-                ? 'bg-orbit-emerald/20 text-orbit-emerald border border-orbit-emerald/50 shadow-sm'
-                : 'text-slate-400 hover:bg-white/5 border border-transparent'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/50 shadow-sm font-semibold'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-transparent'
             }`}
             title="Toggle Vector Change Polygons"
           >
-            <Square className="w-3.5 h-3.5" />
+            <Square className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span className="hidden sm:inline font-semibold">POLYGONS</span>
           </button>
 
@@ -1099,13 +1350,13 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             }}
             className={`px-2.5 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all ${
               !showPolygons && !showHeatmap && !showIndicators
-                ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/60 font-bold shadow-sm'
-                : 'text-slate-400 hover:bg-white/5 border border-transparent'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-500/25 dark:text-emerald-300 dark:border-emerald-400/60 font-bold shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-transparent'
             }`}
             title="Toggle Pure Raw Satellite View (hide all polygon and heatmap masks on the map)"
           >
             <Eye className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">RAW ONLY</span>
+            <span className="hidden md:inline font-semibold">RAW ONLY</span>
           </button>
 
           {/* Area Names Toggle (Beside Polygons) */}
@@ -1114,8 +1365,8 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
             onClick={() => setShowAreaNames(!showAreaNames)}
             className={`px-3 py-1.5 rounded-xl text-xs font-telemetry flex items-center space-x-1.5 transition-all ${
               showAreaNames
-                ? 'bg-orbit-cyan/20 text-orbit-cyan border border-orbit-cyan/50 shadow-sm font-bold'
-                : 'text-slate-400 hover:bg-white/5 border border-transparent'
+                ? 'bg-slate-100 text-slate-900 border border-slate-300 dark:bg-zinc-800 dark:text-zinc-100 dark:border-zinc-700 shadow-sm font-bold'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-transparent'
             }`}
             title="Toggle Area Names & Place Labels on Satellite Map"
           >
@@ -1125,72 +1376,63 @@ function matchesCategory(regionCategory: string, filter: string | null): boolean
         </div>
       </div>
 
-      {/* Category Color Legend Bar */}
-      <div className="absolute top-16 left-4 z-20 hidden sm:flex items-center space-x-1.5 p-1 rounded-xl bg-[#06101A]/90 border border-[#0C1C2A] backdrop-blur-xl shadow-xl text-[11px] font-mono">
-        <span className="text-[10px] text-slate-500 uppercase px-1.5 font-bold">LEGEND:</span>
-        <button
-          type="button"
-          onClick={() => onFilterCategory?.(filteredCategory === 'deforestation' ? null : 'deforestation')}
-          className={`flex items-center space-x-1.5 px-2 py-1 rounded-lg transition-all ${
-            filteredCategory === 'deforestation' ? 'bg-[#FF5C62]/20 border border-[#FF5C62] text-white font-bold' : 'text-slate-300 hover:bg-white/5'
-          }`}
-          title="Filter to Deforestation / Vegetation Loss"
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#FF5C62] shadow-[0_0_8px_#FF5C62]" />
-          <span>Deforestation ({indicatorCounts.vegetation})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onFilterCategory?.(filteredCategory === 'urban' ? null : 'urban')}
-          className={`flex items-center space-x-1.5 px-2 py-1 rounded-lg transition-all ${
-            filteredCategory === 'urban' ? 'bg-[#FFB454]/20 border border-[#FFB454] text-white font-bold' : 'text-slate-300 hover:bg-white/5'
-          }`}
-          title="Filter to Urban Growth & Built-up"
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#FFB454] shadow-[0_0_8px_#FFB454]" />
-          <span>Urban Growth ({indicatorCounts.urban})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onFilterCategory?.(filteredCategory === 'water' ? null : 'water')}
-          className={`flex items-center space-x-1.5 px-2 py-1 rounded-lg transition-all ${
-            filteredCategory === 'water' ? 'bg-[#4EA7FF]/20 border border-[#4EA7FF] text-white font-bold' : 'text-slate-300 hover:bg-white/5'
-          }`}
-          title="Filter to Water Dynamics"
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#4EA7FF] shadow-[0_0_8px_#4EA7FF]" />
-          <span>Water ({indicatorCounts.water})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onFilterCategory?.(filteredCategory === 'regrowth' ? null : 'regrowth')}
-          className={`flex items-center space-x-1.5 px-2 py-1 rounded-lg transition-all ${
-            filteredCategory === 'regrowth' ? 'bg-[#35D6A1]/20 border border-[#35D6A1] text-white font-bold' : 'text-slate-300 hover:bg-white/5'
-          }`}
-          title="Filter to Vegetation Regrowth"
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#35D6A1] shadow-[0_0_8px_#35D6A1]" />
-          <span>Regrowth ({indicatorCounts.land_use})</span>
-        </button>
-
-        {filteredCategory && (
-          <button
-            type="button"
-            onClick={() => onFilterCategory?.(null)}
-            className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/20 text-[#42E8D0] text-[10px] font-bold"
-          >
-            RESET
-          </button>
-        )}
-      </div>
+      {/* Organized Aligned Hotspots Dock (Clean, Horizontally Aligned & Spaced Indicator Bar) */}
+      {showIndicators && placedIndicators.length > 0 && (
+        <div className="absolute bottom-20 left-4 right-4 z-20 flex items-center justify-start sm:justify-center pointer-events-none">
+          <div className="flex items-center space-x-2 p-2 rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-slate-200/80 dark:border-zinc-800 shadow-2xl backdrop-blur-xl pointer-events-auto max-w-full overflow-x-auto custom-scrollbar">
+            <div className="flex items-center space-x-1.5 px-2 text-[10.5px] font-telemetry uppercase font-bold text-slate-500 dark:text-zinc-400 shrink-0 border-r border-slate-200 dark:border-zinc-800 pr-3">
+              <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>ALIGNED HOTSPOTS ({placedIndicators.length}):</span>
+            </div>
+            {placedIndicators.map((pin, idx) => {
+              const config = getCategoryConfig(pin.category);
+              const isSelected = selectedRegion?.id === pin.id;
+              const haText = pin.area_hectares < 100 
+                ? `${pin.area_hectares.toFixed(1)} ha` 
+                : `${Math.round(pin.area_hectares).toLocaleString()} ha`;
+              return (
+                <button
+                  key={pin.id}
+                  type="button"
+                  onClick={() => {
+                    onSelectRegion(pin);
+                    if (mapRef.current) {
+                      mapRef.current.flyTo({ center: pin.centroid, zoom: 14.5, duration: 800 });
+                    }
+                  }}
+                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-telemetry transition-all cursor-pointer shrink-0 border ${
+                    isSelected
+                      ? 'bg-slate-100 dark:bg-zinc-800 font-bold shadow-xs'
+                      : 'hover:bg-slate-50 dark:hover:bg-zinc-800/60 border-transparent'
+                  }`}
+                  style={{
+                    borderColor: isSelected ? config.color : 'transparent',
+                  }}
+                  title={`Focus on #${idx + 1} ${config.shortLabel}: ${pin.user_label} (${haText})`}
+                >
+                  <span
+                    className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 font-mono shadow-xs"
+                    style={{ backgroundColor: config.color }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {config.shortLabel}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500 dark:text-zinc-400">
+                    {haText}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Mouse Crosshair Telemetry Display */}
       {mouseCoords && (
-        <div className="absolute top-4 right-4 z-10 px-2.5 py-1 rounded-xl figma-card border border-slate-700/60 text-[10.5px] font-telemetry text-slate-300 hidden lg:flex items-center space-x-2 backdrop-blur-xl">
-          <Crosshair className="w-3.5 h-3.5 text-orbit-cyan" />
+        <div className="absolute top-4 right-4 z-10 px-2.5 py-1 rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-slate-200/80 dark:border-zinc-800 text-[10.5px] font-telemetry text-slate-700 dark:text-slate-300 hidden lg:flex items-center space-x-2 backdrop-blur-xl shadow-md">
+          <Crosshair className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
           <span>{mouseCoords.lat > 0 ? `${mouseCoords.lat.toFixed(4)}°N` : `${Math.abs(mouseCoords.lat).toFixed(4)}°S`}</span>
           <span>{mouseCoords.lon > 0 ? `${mouseCoords.lon.toFixed(4)}°E` : `${Math.abs(mouseCoords.lon).toFixed(4)}°W`}</span>
         </div>

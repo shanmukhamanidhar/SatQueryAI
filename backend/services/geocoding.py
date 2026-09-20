@@ -468,6 +468,14 @@ async def resolve_location(query: str) -> LocationInfo:
     if cache_key in _GEOCODE_CACHE:
         logger.info(f"Geocoding cache hit for '{clean_query}'")
         return _GEOCODE_CACHE[cache_key]
+
+    # 0. Check Authoritative Indian States & Union Territories Registry
+    from services.india_locations import get_india_location
+    india_loc = get_india_location(clean_query)
+    if india_loc:
+        logger.info(f"Resolved via Indian Authoritative Registry: '{india_loc.name}' ({india_loc.location_type}) [{india_loc.latitude}, {india_loc.longitude}]")
+        _GEOCODE_CACHE[cache_key] = india_loc
+        return india_loc
         
     # 1. Direct coordinate parsing
     coords = parse_lat_lon_query(clean_query)

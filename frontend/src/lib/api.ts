@@ -86,12 +86,22 @@ export async function downloadPdfReport(analysisId: string, locationName: string
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ analysis_id: analysisId }),
   });
-  if (!res.ok) throw new Error('Failed to generate PDF report');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to generate PDF report (HTTP ${res.status})`);
+  }
   const blob = await res.blob();
+  if (blob.size === 0) {
+    throw new Error('Generated PDF report is empty (0 bytes).');
+  }
+  const cleanName = (locationName || 'AOI')
+    .replace(/[^a-zA-Z0-9_\-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `SatQueryAI_Report_${locationName.replace(/\s+/g, '_')}.pdf`;
+  a.download = `SatQueryAI_Report_${cleanName || 'Analysis'}.pdf`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -131,6 +141,91 @@ export async function configureGeminiKey(apiKey: string): Promise<{ status: stri
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to configure Google Gemini API key');
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Dedicated Upload Studio API Methods
+// ---------------------------------------------------------------------------
+export async function uploadSingleImage(payload: {
+  image_data: string;
+  filename?: string;
+  custom_label?: string;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/upload/single`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Single image analysis failed');
+  }
+  return res.json();
+}
+
+export async function uploadCompareImages(payload: {
+  image1_data: string;
+  image2_data: string;
+  label1?: string;
+  label2?: string;
+  filename1?: string;
+  filename2?: string;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/upload/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Image comparison failed');
+  }
+  return res.json();
+}
+
+export async function uploadMultipleImages(payload: {
+  images: Array<{ image_data: string; label?: string; filename?: string }>;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/upload/multiple`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Multiple image analysis failed');
+  }
+  return res.json();
+}
+
+export async function uploadChat(payload: {
+  analysis_data: any;
+  message: string;
+  history?: any[];
+}): Promise<{ reply: string }> {
+  const res = await fetch(`${API_BASE}/upload/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Upload chat query failed');
+  }
+  return res.json();
+}
+
+export async function getUploadSamples(): Promise<{
+  single_samples: any[];
+  compare_samples: any[];
+  multiple_samples: any[];
+}> {
+  const res = await fetch(`${API_BASE}/upload/samples`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to fetch upload samples');
   }
   return res.json();
 }

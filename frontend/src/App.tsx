@@ -17,7 +17,8 @@ import {
   ArrowRight, 
   Clock,
   Maximize2,
-  Satellite
+  Satellite,
+  Upload
 } from 'lucide-react';
 import { AnalysisContext, ChangeRegion } from './lib/types';
 import { runAnalysis, getYearSatelliteImage } from './lib/api';
@@ -39,10 +40,39 @@ import { ExplainMapModal } from './components/ExplainMapModal';
 import { ProvenanceModal } from './components/ProvenanceModal';
 import { ReportModal } from './components/ReportModal';
 import { RawSatelliteModal } from './components/RawSatelliteModal';
+import { UploadStudio } from './components/UploadStudio';
 
 export const App: React.FC = () => {
-  // Navigation View State: 'home' for cinematic landing experience, 'studio' for full-screen analysis control room
-  const [currentView, setCurrentView] = useState<'home' | 'studio'>('home');
+  // Theme State: 'light' (default) or 'dark'
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('satquery-theme');
+      return saved === 'dark' ? 'dark' : 'light';
+    } catch {
+      return 'light';
+    }
+  });
+
+  // Keep documentElement classList synchronized with theme
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    try {
+      localStorage.setItem('satquery-theme', theme);
+    } catch (e) {
+      // ignore
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  // Navigation View State: 'home' for cinematic landing experience, 'studio' for full-screen analysis control room, 'upload' for custom imagery
+  const [currentView, setCurrentView] = useState<'home' | 'studio' | 'upload'>('home');
 
   // Analysis State
   const [context, setContext] = useState<AnalysisContext | null>(null);
@@ -273,7 +303,7 @@ export const App: React.FC = () => {
 
   // Reusable Studio Workspace component used both full-screen and embedded in the Home View
   const renderStudioWorkspace = (isFullscreen: boolean) => (
-    <div className={`flex flex-col lg:flex-row overflow-hidden relative ${isFullscreen ? 'h-full w-full' : 'h-[750px] w-full rounded-2xl border border-[#0C1C2A] bg-[#06101A] shadow-2xl'}`}>
+    <div className={`flex flex-col lg:flex-row overflow-hidden relative ${isFullscreen ? 'h-full w-full bg-slate-50 dark:bg-zinc-950' : 'h-[750px] w-full rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-xl'}`}>
       {/* Left Column: AI Analyst Chat (Collapsible to give map maximum space) */}
       {leftSidebarOpen ? (
         <div className={`w-full lg:w-72 xl:w-80 h-full shrink-0 relative transition-all duration-200 ${mobileTab === 'chat' ? 'flex' : 'hidden lg:flex'}`}>
@@ -288,21 +318,21 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => setLeftSidebarOpen(false)}
-            className="absolute top-3 -right-3 z-30 h-6 w-6 rounded-full bg-[#0b121e] border border-slate-700 text-slate-400 hover:text-[#42E8D0] hover:border-[#42E8D0] flex items-center justify-center shadow-xl transition-all"
+            className="absolute top-3 -right-3 z-30 h-6 w-6 rounded-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center shadow-lg transition-all"
             title="Collapse AI Chat (Expand map)"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
           </button>
         </div>
       ) : (
-        <div className="hidden lg:flex flex-col items-center py-3 px-1 bg-[#06101A]/95 border-r border-[#0C1C2A] shrink-0 z-20">
+        <div className="hidden lg:flex flex-col items-center py-3 px-1 bg-slate-50/90 dark:bg-zinc-950/90 border-r border-slate-200 dark:border-zinc-800 shrink-0 z-20">
           <button
             type="button"
             onClick={() => setLeftSidebarOpen(true)}
-            className="px-2 py-3 rounded-xl bg-[#0C1C2A]/90 hover:bg-[#42E8D0]/15 text-slate-400 hover:text-[#42E8D0] border border-[#102536] hover:border-[#42E8D0]/40 transition-all flex flex-col items-center space-y-2 group shadow-md"
+            className="px-2 py-3 rounded-xl bg-white dark:bg-zinc-900 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-200 dark:border-zinc-800 transition-all flex flex-col items-center space-y-2 group shadow-sm"
             title="Open AI Analyst Chat"
           >
-            <Bot className="w-4 h-4 text-[#42E8D0] group-hover:scale-110 transition-transform" />
+            <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
             <span className="text-[10px] font-mono uppercase tracking-wider [writing-mode:vertical-lr] font-bold">
               AI CHAT
             </span>
@@ -335,6 +365,9 @@ export const App: React.FC = () => {
             timeDrawerOpen={timeDrawerOpen}
             onToggleTimeDrawer={() => setTimeDrawerOpen(!timeDrawerOpen)}
             onOpenRawSatelliteModal={() => setShowRawSatelliteModal(true)}
+            theme={theme}
+            onSelectLocation={handleSearch}
+            isAnalyzing={isAnalyzing}
           />
 
           {/* Change Region Inspector Modal */}
@@ -383,7 +416,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => setRightSidebarOpen(false)}
-            className="absolute top-3 -left-3 z-30 h-6 w-6 rounded-full bg-[#0b121e] border border-slate-700 text-slate-400 hover:text-[#42E8D0] hover:border-[#42E8D0] flex items-center justify-center shadow-xl transition-all"
+            className="absolute top-3 -left-3 z-30 h-6 w-6 rounded-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center shadow-lg transition-all"
             title="Collapse Summary (Expand map)"
           >
             <ChevronRight className="w-3.5 h-3.5" />
@@ -398,20 +431,20 @@ export const App: React.FC = () => {
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full p-6 text-center text-slate-500 font-mono text-xs space-y-2">
-              <Radio className="w-8 h-8 text-slate-600 animate-pulse" />
+              <Radio className="w-8 h-8 text-slate-400 dark:text-slate-600 animate-pulse" />
               <p>Awaiting Earth observation search command...</p>
             </div>
           )}
         </div>
       ) : (
-        <div className="hidden lg:flex flex-col items-center py-3 px-1 bg-[#06101A]/95 border-l border-[#0C1C2A] shrink-0 z-20">
+        <div className="hidden lg:flex flex-col items-center py-3 px-1 bg-slate-50/90 dark:bg-zinc-950/90 border-l border-slate-200 dark:border-zinc-800 shrink-0 z-20">
           <button
             type="button"
             onClick={() => setRightSidebarOpen(true)}
-            className="px-2 py-3 rounded-xl bg-[#0C1C2A]/90 hover:bg-[#42E8D0]/15 text-slate-400 hover:text-[#42E8D0] border border-[#102536] hover:border-[#42E8D0]/40 transition-all flex flex-col items-center space-y-2 group shadow-md"
+            className="px-2 py-3 rounded-xl bg-white dark:bg-zinc-900 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-200 dark:border-zinc-800 transition-all flex flex-col items-center space-y-2 group shadow-sm"
             title="Open Metrics Summary"
           >
-            <BarChart3 className="w-4 h-4 text-[#42E8D0] group-hover:scale-110 transition-transform" />
+            <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
             <span className="text-[10px] font-mono uppercase tracking-wider [writing-mode:vertical-lr] font-bold">
               SUMMARY
             </span>
@@ -420,25 +453,25 @@ export const App: React.FC = () => {
       )}
 
       {/* Mobile Navigation Tabs (visible only on mobile screens) */}
-      <div className="lg:hidden flex border-t border-[#0C1C2A] bg-[#03070D] text-xs font-mono z-30">
+      <div className="lg:hidden flex border-t border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-xs font-mono z-30">
         <button
           type="button"
           onClick={() => setMobileTab('chat')}
-          className={`flex-1 py-3 text-center ${mobileTab === 'chat' ? 'text-[#42E8D0] border-t-2 border-[#42E8D0] font-bold bg-[#06101A]' : 'text-slate-400'}`}
+          className={`flex-1 py-3 text-center transition-colors ${mobileTab === 'chat' ? 'text-blue-600 dark:text-blue-400 border-t-2 border-blue-600 dark:border-blue-400 font-bold bg-slate-50 dark:bg-zinc-900' : 'text-slate-500 dark:text-slate-400'}`}
         >
           AI Analyst
         </button>
         <button
           type="button"
           onClick={() => setMobileTab('map')}
-          className={`flex-1 py-3 text-center ${mobileTab === 'map' ? 'text-[#42E8D0] border-t-2 border-[#42E8D0] font-bold bg-[#06101A]' : 'text-slate-400'}`}
+          className={`flex-1 py-3 text-center transition-colors ${mobileTab === 'map' ? 'text-blue-600 dark:text-blue-400 border-t-2 border-blue-600 dark:border-blue-400 font-bold bg-slate-50 dark:bg-zinc-900' : 'text-slate-500 dark:text-slate-400'}`}
         >
           Map View
         </button>
         <button
           type="button"
           onClick={() => setMobileTab('summary')}
-          className={`flex-1 py-3 text-center ${mobileTab === 'summary' ? 'text-[#42E8D0] border-t-2 border-[#42E8D0] font-bold bg-[#06101A]' : 'text-slate-400'}`}
+          className={`flex-1 py-3 text-center transition-colors ${mobileTab === 'summary' ? 'text-blue-600 dark:text-blue-400 border-t-2 border-blue-600 dark:border-blue-400 font-bold bg-slate-50 dark:bg-zinc-900' : 'text-slate-500 dark:text-slate-400'}`}
         >
           Summary
         </button>
@@ -447,7 +480,7 @@ export const App: React.FC = () => {
   );
 
   return (
-    <div className={`${currentView === 'studio' ? 'h-screen overflow-hidden' : 'min-h-screen'} w-screen bg-[#03070D] text-slate-100 font-sans control-room-bg flex flex-col`}>
+    <div className={`${currentView === 'studio' ? 'h-screen overflow-hidden' : 'min-h-screen'} w-full max-w-full overflow-x-hidden bg-white dark:bg-[#09090b] text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200 flex flex-col`}>
       {/* Unified Top Navigation */}
       <Navigation
         currentView={currentView}
@@ -462,6 +495,8 @@ export const App: React.FC = () => {
         onOpenRawSatellite={() => setShowRawSatelliteModal(true)}
         onRunDemo={handleDemoWalkthrough}
         onScrollToSection={handleScrollToSection}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       {/* VIEW MODE 1: CINEMATIC HOME / LANDING PAGE */}
@@ -487,18 +522,18 @@ export const App: React.FC = () => {
           />
 
           {/* Interactive Live Earth Section */}
-          <section id="live-earth-section" className="py-16 bg-[#03070D] border-b border-[#0C1C2A] relative">
+          <section id="live-earth-section" className="py-16 bg-slate-50/70 dark:bg-zinc-950/80 border-b border-slate-200 dark:border-zinc-800 relative">
             <div className="max-w-7xl mx-auto px-4 lg:px-8">
               <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
                 <div>
-                  <div className="inline-flex items-center space-x-2 text-[11px] font-mono text-[#42E8D0] uppercase tracking-widest font-semibold mb-2">
+                  <div className="inline-flex items-center space-x-2 text-[11px] font-mono text-blue-600 dark:text-blue-400 uppercase tracking-widest font-semibold mb-2">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>INTERACTIVE OBSERVATION WORKSPACE</span>
                   </div>
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                     Live Planetary Satellite Studio
                   </h2>
-                  <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
                     Direct multispectral examination of {context ? context.location.name : 'planetary locations'} with swipe comparison, vector polygons, and Gemini AI synthesis.
                   </p>
                 </div>
@@ -506,18 +541,28 @@ export const App: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                   <button
                     type="button"
+                    onClick={() => setCurrentView('upload')}
+                    className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 text-xs font-mono font-bold transition-all shadow-sm flex items-center space-x-2"
+                    title="Upload and analyze custom satellite rasters"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>UPLOAD MODE</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setShowRawSatelliteModal(true)}
-                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-orbit-cyan/20 to-emerald-500/20 hover:from-orbit-cyan/35 hover:to-emerald-500/35 border border-orbit-cyan/50 text-orbit-cyan hover:text-white text-xs font-mono font-bold transition-all shadow-[0_0_15px_rgba(0,240,255,0.25)] flex items-center space-x-2"
+                    className="px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 border border-blue-300 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 text-xs font-mono font-bold transition-all shadow-sm flex items-center space-x-2"
                     title="Open Raw Satellite Timeline Studio: Side-by-side pure optical satellite imagery with timeline choice"
                   >
-                    <Satellite className="w-3.5 h-3.5 text-orbit-cyan animate-pulse" />
+                    <Satellite className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 animate-pulse" />
                     <span>RAW SATELLITE (SIDE-BY-SIDE)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setCurrentView('studio')}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#42E8D0] to-[#4EA7FF] hover:from-[#3BE0C8] hover:to-[#3B96F5] text-[#03070D] text-xs font-mono font-bold transition-all shadow-md flex items-center space-x-2"
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-mono font-bold transition-all shadow-md flex items-center space-x-2"
                   >
                     <Maximize2 className="w-3.5 h-3.5" />
                     <span>EXPAND FULLSCREEN STUDIO</span>
@@ -564,39 +609,49 @@ export const App: React.FC = () => {
         </main>
       )}
 
+      {/* VIEW MODE 3: SEPARATE DEDICATED UPLOAD STUDIO WORKSPACE */}
+      {currentView === 'upload' && (
+        <main className="flex-1 w-full min-h-0 overflow-y-auto relative flex flex-col">
+          <UploadStudio
+            onClose={() => setCurrentView('home')}
+            onOpenLiveStudio={() => setCurrentView('studio')}
+          />
+        </main>
+      )}
+
       {/* Progress Telemetry Overlay */}
       {isAnalyzing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#03070D]/85 backdrop-blur-lg">
-          <div className="w-full max-w-md panel-glass rounded-2xl border border-[#42E8D0]/40 shadow-2xl p-6 font-mono">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl p-6 font-mono text-slate-900 dark:text-slate-100">
             <div className="flex items-center space-x-3 mb-4">
-              <div className="h-10 w-10 rounded-xl bg-[#42E8D0]/20 border border-[#42E8D0]/50 flex items-center justify-center shadow-[0_0_20px_rgba(66,232,208,0.3)]">
-                <Activity className="w-5 h-5 text-[#42E8D0] animate-spin" />
+              <div className="h-10 w-10 rounded-xl bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 flex items-center justify-center">
+                <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
               </div>
               <div>
-                <h3 className="font-bold text-sm text-slate-100">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
                   AUTONOMOUS EARTH PIPELINE ACTIVE
                 </h3>
-                <span className="text-[11px] text-[#42E8D0]">
+                <span className="text-[11px] text-blue-600 dark:text-blue-400">
                   {stages[currentStage]}
                 </span>
               </div>
             </div>
 
             {/* Stepper Checklist */}
-            <div className="space-y-2 text-xs py-2 border-y border-slate-800 my-4">
+            <div className="space-y-2 text-xs py-2 border-y border-slate-200 dark:border-zinc-800 my-4">
               {stages.slice(0, 8).map((stepText, idx) => {
                 const isDone = currentStage > idx;
                 const isCurrent = currentStage === idx;
                 return (
                   <div key={idx} className="flex items-center space-x-2.5">
                     {isDone ? (
-                      <CheckCircle2 className="w-4 h-4 text-[#35D6A1] shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     ) : isCurrent ? (
-                      <Activity className="w-4 h-4 text-[#42E8D0] animate-spin shrink-0" />
+                      <Activity className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin shrink-0" />
                     ) : (
-                      <span className="w-4 h-4 rounded-full border border-slate-700 shrink-0" />
+                      <span className="w-4 h-4 rounded-full border border-slate-300 dark:border-zinc-700 shrink-0" />
                     )}
-                    <span className={`text-[11px] ${isDone ? 'text-slate-400' : isCurrent ? 'text-[#42E8D0] font-semibold' : 'text-slate-600'}`}>
+                    <span className={`text-[11px] ${isDone ? 'text-slate-400 dark:text-slate-500' : isCurrent ? 'text-blue-600 dark:text-blue-400 font-semibold' : 'text-slate-400 dark:text-slate-600'}`}>
                       {stepText.replace("...", "")}
                     </span>
                   </div>
@@ -613,20 +668,20 @@ export const App: React.FC = () => {
 
       {/* Error Modal */}
       {errorMessage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#03070D]/80 backdrop-blur-md">
-          <div className="w-full max-w-md panel-glass rounded-2xl border border-rose-500/40 p-5 font-sans">
-            <div className="flex items-center space-x-3 text-rose-400 mb-3 font-mono">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-2xl border border-rose-200 dark:border-rose-900/50 p-5 font-sans shadow-2xl">
+            <div className="flex items-center space-x-3 text-rose-600 dark:text-rose-400 mb-3 font-mono">
               <AlertTriangle className="w-6 h-6 shrink-0" />
               <h3 className="font-bold text-sm uppercase">OBSERVATION NOTICE</h3>
             </div>
-            <p className="text-xs text-slate-200 leading-relaxed mb-4">
+            <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed mb-4">
               {errorMessage}
             </p>
             <div className="flex justify-end">
               <button
                 type="button"
                 onClick={() => setErrorMessage(null)}
-                className="px-4 py-2 bg-[#0C1C2A] hover:bg-[#102536] text-slate-200 text-xs rounded-lg font-mono"
+                className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg font-mono font-medium"
               >
                 Dismiss
               </button>

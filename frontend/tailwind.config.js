@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,58 +8,114 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Base Dark Palette
-        'deep-space': '#03070D',
-        'midnight': '#06101A',
-        'deep-navy': '#081724',
-        'panel-dark': '#0C1C2A',
-        'panel-elevated': '#102536',
+        // Semantic Purposeful Color System
+        // Blue (Hydrology, Primary Navigation, Scanner Actions)
+        brand: {
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+          950: '#172554',
+        },
+        // Green (Canopy, Vegetation, Positive Evidence, High Confidence)
+        canopy: {
+          50: '#f0fdf4',
+          100: '#dcfce7',
+          200: '#bbf7d0',
+          300: '#86efac',
+          400: '#4ade80',
+          500: '#22c55e',
+          600: '#16a34a',
+          700: '#15803d',
+          800: '#166534',
+          900: '#14532d',
+          950: '#052e16',
+        },
+        // Orange (Urban Growth, Built-up Expansion, Infrastructure)
+        urban: {
+          50: '#fff7ed',
+          100: '#ffedd5',
+          200: '#fed7aa',
+          300: '#fdba74',
+          400: '#fb923c',
+          500: '#f97316',
+          600: '#ea580c',
+          700: '#c2410c',
+          800: '#9a3412',
+          900: '#7c2d12',
+          950: '#431407',
+        },
+        // Red (Deforestation, Environmental Disturbance, Live Alerts)
+        hazard: {
+          50: '#fef2f2',
+          100: '#fee2e2',
+          200: '#fecaca',
+          300: '#fca5a5',
+          400: '#f87171',
+          500: '#ef4444',
+          600: '#dc2626',
+          700: '#b91c1c',
+          800: '#991b1b',
+          900: '#7f1d1d',
+          950: '#450a0a',
+        },
+        // Water (Surface Moisture & Reservoirs)
+        water: {
+          50: '#f0f9ff',
+          100: '#e0f2fe',
+          200: '#bae6fd',
+          300: '#7dd3fc',
+          400: '#38bdf8',
+          500: '#0ea5e9',
+          600: '#0284c7',
+          700: '#0369a1',
+          800: '#075985',
+          900: '#0c4a6e',
+          950: '#082f49',
+        },
 
-        // Primary Accent
-        'electric-cyan': '#42E8D0',
-        'aqua': '#55DDE0',
+        // Legacy compatibility mappings
+        'electric-cyan': '#2563eb',
+        'aqua': '#0284c7',
+        'satellite-blue': '#3b82f6',
+        'aurora-blue': '#2563eb',
+        'aurora-violet': '#7c3aed',
+        'soft-violet': '#8b5cf6',
+        'emerald-env': '#16a34a',
+        'forest-env': '#15803d',
+        'alert-warning': '#ea580c',
+        'alert-critical': '#dc2626',
 
-        // Secondary Accent
-        'satellite-blue': '#4EA7FF',
-        'aurora-blue': '#6D8DFF',
-
-        // Secondary Highlight
-        'aurora-violet': '#8B6CFF',
-        'soft-violet': '#A477FF',
-
-        // Environmental
-        'emerald-env': '#35D6A1',
-        'forest-env': '#43C98B',
-
-        // Alerts
-        'alert-warning': '#FFB454',
-        'alert-critical': '#FF5C62',
-
-        // Base space scale mapped to new dark palette
         space: {
-          950: '#03070D',
-          900: '#06101A',
-          850: '#081724',
-          800: '#0C1C2A',
-          750: '#102536',
-          700: '#172E42',
+          950: '#09090b',
+          900: '#121215',
+          850: '#18181b',
+          800: '#27272a',
+          750: '#3f3f46',
+          700: '#52525b',
         },
         orbit: {
-          cyan: '#42E8D0',
-          emerald: '#35D6A1',
-          amber: '#FFB454',
-          crimson: '#FF5C62',
-          violet: '#8B6CFF',
-          blue: '#4EA7FF',
+          cyan: '#2563eb',
+          emerald: '#16a34a',
+          amber: '#ea580c',
+          crimson: '#dc2626',
+          violet: '#7c3aed',
+          blue: '#0284c7',
         },
         earth: {
-          veg: '#35D6A1',
-          water: '#4EA7FF',
-          built: '#FFB454',
-          crop: '#55DDE0',
-          bare: '#A477FF',
-          change: '#FF5C62',
-          stable: '#64748B',
+          veg: '#16a34a',
+          water: '#0284c7',
+          built: '#ea580c',
+          crop: '#059669',
+          bare: '#d97706',
+          change: '#dc2626',
+          stable: '#64748b',
         }
       },
       fontFamily: {
@@ -66,19 +123,14 @@ export default {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
       boxShadow: {
-        'radar': '0 0 25px -5px rgba(66, 232, 208, 0.2)',
-        'panel': '0 12px 36px -8px rgba(3, 7, 13, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.06)',
-        'panel-elevated': '0 20px 48px -12px rgba(3, 7, 13, 0.9), 0 0 24px -6px rgba(66, 232, 208, 0.15)',
-        'glow-cyan': '0 0 20px rgba(66, 232, 208, 0.35)',
-        'glow-blue': '0 0 20px rgba(78, 167, 255, 0.35)',
-        'glow-violet': '0 0 20px rgba(139, 108, 255, 0.35)',
-        'glow-crimson': '0 0 20px rgba(255, 92, 98, 0.35)',
-        'glow-emerald': '0 0 20px rgba(53, 214, 161, 0.35)',
-      },
-      backgroundImage: {
-        'grid-pattern': "radial-gradient(circle at 1px 1px, rgba(66, 232, 208, 0.08) 1px, transparent 0)",
-        'radar-concentric': "radial-gradient(circle, rgba(66, 232, 208, 0.06) 0%, rgba(66, 232, 208, 0) 70%)",
-        'gradient-radial-earth': "radial-gradient(circle at 50% 120%, rgba(78, 167, 255, 0.18) 0%, rgba(66, 232, 208, 0.08) 40%, transparent 75%)",
+        'subtle': '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
+        'elevated': '0 10px 30px -5px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.02)',
+        'card': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+        'card-dark': '0 12px 36px -8px rgba(0, 0, 0, 0.7)',
+        'glow-blue': '0 0 20px rgba(37, 99, 235, 0.25)',
+        'glow-green': '0 0 20px rgba(22, 163, 74, 0.25)',
+        'glow-orange': '0 0 20px rgba(234, 88, 12, 0.25)',
+        'glow-red': '0 0 20px rgba(220, 38, 38, 0.25)',
       },
     },
   },

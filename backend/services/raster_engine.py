@@ -36,11 +36,11 @@ CLASS_NAMES = {
 }
 
 CLASS_COLORS = {
-    CLASS_WATER: "#0ea5e9",    # Blue
-    CLASS_TREES: "#15803d",    # Dark Green
-    CLASS_CROPS: "#84cc16",    # Light Green
-    CLASS_BUILT: "#f97316",    # Orange
-    CLASS_BARE: "#d97706"     # Ochre/Brown
+    CLASS_WATER: "#0284c7",    # Blue (Water)
+    CLASS_TREES: "#10b981",    # Green (Vegetation)
+    CLASS_CROPS: "#10b981",    # Green (Vegetation / Agriculture)
+    CLASS_BUILT: "#f97316",    # Orange (Construction / Urban)
+    CLASS_BARE: "#d97706"     # Ochre/Brown (Bare Soil)
 }
 
 def calculate_aoi_hectares(bbox: List[float]) -> float:
@@ -428,7 +428,7 @@ def extract_change_polygons(
         {
             "category": "Deforestation",
             "user_label": "Deforestation & Canopy Loss",
-            "color": "#FF5C62",
+            "color": "#ef4444",
             "mask": (delta_ndvi <= -0.10),
             "simple_tmpl": "Vegetation loss and canopy disturbance detected via reduced NDVI.",
             "tech_tmpl": "NDVI drop: {ndvi:+.3f}, Red-edge / NIR reflectance loss confirmed."
@@ -436,7 +436,7 @@ def extract_change_polygons(
         {
             "category": "Urban development",
             "user_label": "Urban Growth & Built-up",
-            "color": "#FFB454",
+            "color": "#f97316",
             "mask": (delta_ndbi >= 0.07),
             "simple_tmpl": "New concrete, asphalt, or built-up infrastructure expansion detected.",
             "tech_tmpl": "NDBI elevation: {ndbi:+.3f}, SWIR surface reflectance increase."
@@ -444,7 +444,7 @@ def extract_change_polygons(
         {
             "category": "Water change",
             "user_label": "Water Surface Dynamics",
-            "color": "#4EA7FF",
+            "color": "#0284c7",
             "mask": (np.abs(delta_ndwi) >= 0.08),
             "simple_tmpl": "Surface water moisture and water-body boundary fluctuation detected.",
             "tech_tmpl": "NDWI shift: {ndwi:+.3f}, Green-NIR band divergence."
@@ -452,7 +452,7 @@ def extract_change_polygons(
         {
             "category": "Vegetation gain",
             "user_label": "Vegetation Regrowth & Crops",
-            "color": "#35D6A1",
+            "color": "#10b981",
             "mask": (delta_ndvi >= 0.10),
             "simple_tmpl": "Vegetation regrowth or seasonal agricultural crop intensification detected.",
             "tech_tmpl": "NDVI increase: {ndvi:+.3f}, NIR canopy vigor elevation."
@@ -620,22 +620,22 @@ def extract_change_polygons(
             if m_d_ndvi <= -0.06:
                 cat = "Deforestation"
                 label = "Deforestation & Canopy Loss"
-                clr = "#FF5C62"
+                clr = "#ef4444"  # Canonical Red
                 s_tmpl = "Vegetation loss and canopy disturbance confirmed by satellite telemetry."
             elif m_d_ndbi >= 0.05:
                 cat = "Urban development"
                 label = "Urban Growth & Built-up"
-                clr = "#FFB454"
+                clr = "#f97316"  # Canonical Orange
                 s_tmpl = "New built-up footprint and concrete/infrastructure paving detected."
             elif abs(m_d_ndwi) >= 0.04:
                 cat = "Water change"
                 label = "Water Surface Dynamics"
-                clr = "#4EA7FF"
+                clr = "#0284c7"  # Canonical Blue
                 s_tmpl = "Surface water moisture and water boundary fluctuation confirmed."
             else:
                 cat = "Vegetation gain"
                 label = "Vegetation Regrowth & Crops"
-                clr = "#35D6A1"
+                clr = "#10b981"  # Canonical Green
                 s_tmpl = "Vegetation canopy recovery and active greenness index elevation."
 
             min_y, min_x = coords.min(axis=0)
@@ -694,10 +694,10 @@ def extract_change_polygons(
         ]
 
         fallback_configs = [
-            ("Deforestation", "Deforestation & Canopy Loss", "#FF5C62", -0.15, 0.02, -0.04, "Vegetation loss and canopy disturbance detected via reduced NDVI."),
-            ("Urban development", "Urban Growth & Built-up", "#FFB454", -0.05, 0.11, -0.02, "New concrete, asphalt, or built-up infrastructure expansion detected."),
-            ("Water change", "Water Surface Dynamics", "#4EA7FF", -0.02, -0.03, 0.09, "Surface water moisture and water-body boundary fluctuation detected."),
-            ("Vegetation gain", "Vegetation Regrowth & Crops", "#35D6A1", 0.14, -0.04, 0.02, "Vegetation regrowth or seasonal agricultural crop intensification detected."),
+            ("Deforestation", "Deforestation & Canopy Loss", "#ef4444", -0.15, 0.02, -0.04, "Vegetation loss and canopy disturbance detected via reduced NDVI."),
+            ("Urban development", "Urban Growth & Built-up", "#f97316", -0.05, 0.11, -0.02, "New concrete, asphalt, or built-up infrastructure expansion detected."),
+            ("Water change", "Water Surface Dynamics", "#0284c7", -0.02, -0.03, 0.09, "Surface water moisture and water-body boundary fluctuation detected."),
+            ("Vegetation gain", "Vegetation Regrowth & Crops", "#10b981", 0.14, -0.04, 0.02, "Vegetation regrowth or seasonal agricultural crop intensification detected."),
         ]
 
         for idx, (off_x, off_y, ha) in enumerate(fallback_offsets):

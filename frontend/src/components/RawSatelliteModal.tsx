@@ -151,13 +151,8 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
   const [leftYear, setLeftYear] = useState<number>(2021);
   const [rightYear, setRightYear] = useState<number>(2026);
 
-  // View modes: 'side-by-side' | 'swipe' | 'gallery'
-  const [viewMode, setViewMode] = useState<'side-by-side' | 'swipe' | 'gallery'>('side-by-side');
-
-  // Swipe slider position (0 - 100)
-  const [swipePosition, setSwipePosition] = useState<number>(50);
-  const [isDraggingSwipe, setIsDraggingSwipe] = useState<boolean>(false);
-  const swipeContainerRef = useRef<HTMLDivElement>(null);
+  // View modes: 'side-by-side' | 'gallery'
+  const [viewMode, setViewMode] = useState<'side-by-side' | 'gallery'>('side-by-side');
 
   // Cache of fetched year images
   const [imageCache, setImageCache] = useState<Record<number, YearImageRecord>>({});
@@ -295,33 +290,6 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
     document.body.removeChild(link);
   };
 
-  // Swipe slider drag handlers
-  const handleSwipeMove = (clientX: number) => {
-    if (!swipeContainerRef.current) return;
-    const rect = swipeContainerRef.current.getBoundingClientRect();
-    const pos = ((clientX - rect.left) / rect.width) * 100;
-    setSwipePosition(Math.max(2, Math.min(98, pos)));
-  };
-
-  const handleMouseDown = () => setIsDraggingSwipe(true);
-  const handleMouseUp = () => setIsDraggingSwipe(false);
-
-  useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (isDraggingSwipe) handleSwipeMove(e.clientX);
-    };
-    const handleGlobalMouseUp = () => setIsDraggingSwipe(false);
-
-    if (isDraggingSwipe) {
-      window.addEventListener('mousemove', handleGlobalMouseMove);
-      window.addEventListener('mouseup', handleGlobalMouseUp);
-    }
-    return () => {
-      window.removeEventListener('mousemove', handleGlobalMouseMove);
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
-  }, [isDraggingSwipe]);
-
   // Keyboard escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -337,69 +305,58 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
   const rightImg = imageCache[rightYear];
 
   return (
-    <div className={`fixed inset-0 z-[120] bg-[#050811]/95 backdrop-blur-2xl flex flex-col font-sans transition-all text-slate-100 ${isFullscreen ? 'p-0' : 'p-2 sm:p-4 lg:p-6'}`}>
-      <div className={`w-full h-full flex flex-col bg-[#080d1a] border border-slate-700/80 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden ${isFullscreen ? 'rounded-none border-none' : 'rounded-3xl'}`}>
+    <div className={`fixed inset-0 z-[120] bg-slate-900/70 dark:bg-black/85 backdrop-blur-2xl flex flex-col font-sans transition-all text-slate-900 dark:text-slate-100 ${isFullscreen ? 'p-0' : 'p-2 sm:p-4 lg:p-6'}`}>
+      <div className={`w-full h-full flex flex-col bg-white dark:bg-[#090e17] border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden ${isFullscreen ? 'rounded-none border-none' : 'rounded-3xl'}`}>
         
         {/* ======================================================================= */}
         {/* 1. TOP HEADER BAR: TITLE, VIEW MODES, CONTROLS, CLOSE                   */}
         {/* ======================================================================= */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#0c1322] border-b border-slate-800/90 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-slate-50 dark:bg-[#0c1322] border-b border-slate-200 dark:border-zinc-800 shrink-0">
           
           {/* Left: Title & Subtitle */}
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orbit-cyan/20 to-emerald-500/20 border border-orbit-cyan/40 flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.25)]">
-              <Satellite className="w-5 h-5 text-orbit-cyan animate-pulse" />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500/20 to-emerald-500/20 border border-blue-500/40 flex items-center justify-center shadow-md">
+              <Satellite className="w-5 h-5 text-blue-600 dark:text-cyan-400 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-heading font-black text-sm sm:text-base tracking-wider text-white uppercase">
+                <span className="font-heading font-black text-sm sm:text-base tracking-wider text-slate-900 dark:text-white uppercase">
                   RAW SATELLITE IMAGERY STUDIO
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-orbit-cyan/15 text-orbit-cyan text-[10px] font-telemetry font-bold border border-orbit-cyan/30">
+                <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 text-[10px] font-telemetry font-bold border border-blue-200 dark:border-cyan-500/30">
                   PURE OPTICAL • NO MASKS
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-telemetry">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-telemetry">
                 True-color satellite photography across timeline years • Side-by-side physical comparison
               </p>
             </div>
           </div>
 
           {/* Center: View Mode Switcher */}
-          <div className="flex items-center bg-[#060a12] p-1 rounded-2xl border border-slate-800 text-xs font-telemetry">
+          <div className="flex items-center bg-slate-200/80 dark:bg-zinc-950 p-1 rounded-2xl border border-slate-300 dark:border-zinc-800 text-xs font-telemetry">
             <button
               type="button"
               onClick={() => setViewMode('side-by-side')}
               className={`px-3 py-1.5 rounded-xl font-bold flex items-center space-x-1.5 transition-all ${
                 viewMode === 'side-by-side'
-                  ? 'bg-orbit-cyan text-slate-950 shadow-[0_0_12px_rgba(0,240,255,0.5)]'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/5'
               }`}
             >
               <Columns className="w-3.5 h-3.5" />
               <span>SIDE-BY-SIDE</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setViewMode('swipe')}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center space-x-1.5 transition-all ${
-                viewMode === 'swipe'
-                  ? 'bg-orbit-cyan text-slate-950 shadow-[0_0_12px_rgba(0,240,255,0.5)]'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>SWIPE SLIDER</span>
-            </button>
+
 
             <button
               type="button"
               onClick={() => setViewMode('gallery')}
               className={`px-3 py-1.5 rounded-xl font-bold flex items-center space-x-1.5 transition-all ${
                 viewMode === 'gallery'
-                  ? 'bg-orbit-cyan text-slate-950 shadow-[0_0_12px_rgba(0,240,255,0.5)]'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/5'
               }`}
             >
               <Grid3X3 className="w-3.5 h-3.5" />
@@ -412,7 +369,7 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
             <button
               type="button"
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white border border-slate-300 dark:border-zinc-700 transition-colors shadow-sm"
               title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen View'}
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -421,10 +378,10 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 text-xs font-telemetry font-bold flex items-center space-x-1.5 transition-all shadow-sm"
+              className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/15 dark:hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-500/40 text-xs font-telemetry font-bold flex items-center space-x-1.5 transition-all shadow-sm"
               title="Close Raw Satellite Studio"
             >
-              <X className="w-4 h-4 text-rose-400" />
+              <X className="w-4 h-4 text-rose-500 dark:text-rose-400" />
               <span>CLOSE</span>
             </button>
           </div>
@@ -433,37 +390,37 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
         {/* ======================================================================= */}
         {/* 2. SECONDARY TOOLBAR: LOCATION PICKER + TIMELINE SELECTORS              */}
         {/* ======================================================================= */}
-        <div className="px-4 py-2.5 bg-[#090f1e] border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs font-telemetry shrink-0">
+        <div className="px-4 py-2.5 bg-slate-100/80 dark:bg-[#070b14] border-b border-slate-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs font-telemetry shrink-0">
           
           {/* PLACE SELECTOR WITH POPUP / DROPDOWN */}
           <div className="relative">
             <div className="flex items-center space-x-2">
-              <span className="text-slate-400 uppercase font-bold flex items-center space-x-1">
-                <MapPin className="w-3.5 h-3.5 text-orbit-cyan" />
+              <span className="text-slate-500 dark:text-slate-400 uppercase font-bold flex items-center space-x-1">
+                <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>SPECIFIC PLACE:</span>
               </span>
               <button
                 type="button"
                 onClick={() => setPlaceDropdownOpen(!placeDropdownOpen)}
-                className="px-3 py-1.5 rounded-xl bg-[#0e172a] hover:bg-slate-800 text-white font-bold border border-slate-700 hover:border-orbit-cyan/50 flex items-center space-x-2 transition-all shadow-inner"
+                className="px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-900 dark:text-white font-bold border border-slate-300 dark:border-zinc-700 flex items-center space-x-2 transition-all shadow-sm"
               >
-                <span className="text-orbit-cyan font-mono">{activePlaceName}</span>
-                <span className="text-slate-400 text-[10px]">▼ CHANGE PLACE</span>
+                <span className="text-blue-600 dark:text-blue-400 font-mono">{activePlaceName}</span>
+                <span className="text-slate-400 dark:text-slate-500 text-[10px]">▼ CHANGE PLACE</span>
               </button>
             </div>
 
             {/* Dropdown for selecting specific places or searching */}
             {placeDropdownOpen && (
-              <div className="absolute left-0 top-full mt-2 w-80 sm:w-96 bg-[#090f1d] border border-slate-700 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2">
-                  <span className="text-xs font-bold text-white flex items-center space-x-1.5">
-                    <Compass className="w-3.5 h-3.5 text-orbit-cyan" />
+              <div className="absolute left-0 top-full mt-2 w-80 sm:w-96 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-zinc-800 mb-2">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                    <Compass className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>CHOOSE SPECIFIC OBSERVATION PLACE</span>
                   </span>
                   <button
                     type="button"
                     onClick={() => setPlaceDropdownOpen(false)}
-                    className="text-slate-400 hover:text-white text-xs p-1"
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs p-1"
                   >
                     ✕
                   </button>
@@ -478,20 +435,20 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                       value={placeSearchInput}
                       onChange={(e) => setPlaceSearchInput(e.target.value)}
                       placeholder="Type any world city, island, or river..."
-                      className="w-full bg-[#060a12] border border-slate-700 rounded-xl pl-8 pr-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orbit-cyan"
+                      className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl pl-8 pr-2 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={isResolvingPlace}
-                    className="px-3 py-1.5 rounded-xl bg-orbit-cyan hover:bg-orbit-cyan/80 text-slate-950 font-bold text-xs shrink-0 transition-colors"
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shrink-0 transition-colors shadow-sm"
                   >
                     {isResolvingPlace ? 'Locating...' : 'Go'}
                   </button>
                 </form>
 
                 {/* Curated Quick Locations */}
-                <div className="text-[10.5px] text-slate-400 mb-1 font-semibold uppercase">Popular Satellite Centers:</div>
+                <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mb-1 font-semibold uppercase">Popular Satellite Centers:</div>
                 <div className="grid grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-1">
                   {PRESET_PLACES.map((p) => {
                     const isCurrent = p.name === activePlaceName || p.id === activePlaceName.toLowerCase();
@@ -502,12 +459,12 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                         onClick={() => handleSelectPresetPlace(p)}
                         className={`p-2 rounded-xl text-left border transition-all flex flex-col ${
                           isCurrent
-                            ? 'bg-orbit-cyan/15 border-orbit-cyan/60 text-orbit-cyan font-bold'
-                            : 'bg-white/5 hover:bg-white/10 border-slate-800 text-slate-300 hover:text-white'
+                            ? 'bg-blue-50 dark:bg-blue-500/15 border-blue-400 dark:border-blue-500/60 text-blue-700 dark:text-blue-400 font-bold'
+                            : 'bg-slate-50 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                         }`}
                       >
                         <span className="font-semibold text-xs leading-snug">{p.name}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">{p.country}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{p.country}</span>
                       </button>
                     );
                   })}
@@ -519,14 +476,13 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
           {/* DUAL TIMELINE YEAR SELECTORS (LEFT & RIGHT) */}
           <div className="flex flex-wrap items-center gap-3">
             {/* LEFT / BASELINE YEAR */}
-            <div className="flex items-center space-x-1.5 bg-[#060a12] px-2.5 py-1 rounded-xl border border-slate-800">
-              <span className="text-emerald-400 font-bold text-[11px] uppercase tracking-wider">
+            <div className="flex items-center space-x-1.5 bg-white dark:bg-zinc-950 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm">
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold text-[11px] uppercase tracking-wider">
                 LEFT PASS (A):
               </span>
               <div className="flex items-center space-x-1">
                 {AVAILABLE_YEARS.map((yr) => {
                   const isSel = leftYear === yr;
-                  const isLoading = loadingYears[yr];
                   return (
                     <button
                       key={`left-${yr}`}
@@ -534,8 +490,8 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                       onClick={() => setLeftYear(yr)}
                       className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${
                         isSel
-                          ? 'bg-emerald-500 text-slate-950 shadow-[0_0_10px_rgba(16,185,129,0.7)] scale-105'
-                          : 'text-slate-400 hover:text-emerald-300 hover:bg-white/5'
+                          ? 'bg-emerald-600 text-white shadow-sm scale-105'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
                       }`}
                     >
                       {yr}
@@ -549,21 +505,20 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
             <button
               type="button"
               onClick={handleSwapYears}
-              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-orbit-cyan border border-slate-700 hover:border-orbit-cyan/50 transition-all"
+              className="p-1.5 rounded-xl bg-white hover:bg-slate-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400 border border-slate-200 dark:border-zinc-700 transition-all shadow-sm"
               title="Swap Left and Right observation timeline passes"
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
             </button>
 
             {/* RIGHT / COMPARATIVE YEAR */}
-            <div className="flex items-center space-x-1.5 bg-[#060a12] px-2.5 py-1 rounded-xl border border-slate-800">
-              <span className="text-orbit-cyan font-bold text-[11px] uppercase tracking-wider">
+            <div className="flex items-center space-x-1.5 bg-white dark:bg-zinc-950 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm">
+              <span className="text-blue-600 dark:text-blue-400 font-bold text-[11px] uppercase tracking-wider">
                 RIGHT PASS (B):
               </span>
               <div className="flex items-center space-x-1">
                 {AVAILABLE_YEARS.map((yr) => {
                   const isSel = rightYear === yr;
-                  const isLoading = loadingYears[yr];
                   return (
                     <button
                       key={`right-${yr}`}
@@ -571,8 +526,8 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                       onClick={() => setRightYear(yr)}
                       className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${
                         isSel
-                          ? 'bg-orbit-cyan text-slate-950 shadow-[0_0_10px_rgba(0,240,255,0.7)] scale-105'
-                          : 'text-slate-400 hover:text-orbit-cyan hover:bg-white/5'
+                          ? 'bg-blue-600 text-white shadow-sm scale-105'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30'
                       }`}
                     >
                       {yr}
@@ -583,26 +538,26 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
             </div>
 
             {/* Quick Presets */}
-            <div className="hidden xl:flex items-center space-x-1 text-[11px] text-slate-400 pl-1 border-l border-slate-800">
-              <span className="text-slate-500 font-bold mr-1">SPAN:</span>
+            <div className="hidden xl:flex items-center space-x-1 text-[11px] text-slate-500 dark:text-slate-400 pl-1 border-l border-slate-200 dark:border-zinc-800">
+              <span className="text-slate-400 dark:text-slate-500 font-bold mr-1">SPAN:</span>
               <button
                 type="button"
                 onClick={() => { setLeftYear(2020); setRightYear(2026); }}
-                className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-orbit-cyan/20 hover:text-orbit-cyan border border-slate-800 transition-colors"
+                className="px-2 py-0.5 rounded-lg bg-white dark:bg-white/5 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/20 dark:hover:text-blue-400 border border-slate-200 dark:border-zinc-800 transition-colors shadow-sm"
               >
                 6-Yr (2020➔2026)
               </button>
               <button
                 type="button"
                 onClick={() => { setLeftYear(2021); setRightYear(2026); }}
-                className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-orbit-cyan/20 hover:text-orbit-cyan border border-slate-800 transition-colors"
+                className="px-2 py-0.5 rounded-lg bg-white dark:bg-white/5 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/20 dark:hover:text-blue-400 border border-slate-200 dark:border-zinc-800 transition-colors shadow-sm"
               >
                 5-Yr (2021➔2026)
               </button>
               <button
                 type="button"
                 onClick={() => { setLeftYear(2023); setRightYear(2026); }}
-                className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-orbit-cyan/20 hover:text-orbit-cyan border border-slate-800 transition-colors"
+                className="px-2 py-0.5 rounded-lg bg-white dark:bg-white/5 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/20 dark:hover:text-blue-400 border border-slate-200 dark:border-zinc-800 transition-colors shadow-sm"
               >
                 3-Yr (2023➔2026)
               </button>
@@ -614,7 +569,7 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
         {/* ======================================================================= */}
         {/* 3. MAIN SATELLITE IMAGES DISPLAY AREA                                   */}
         {/* ======================================================================= */}
-        <div className="flex-1 p-3 sm:p-4 overflow-hidden relative bg-[#040711] flex flex-col">
+        <div className="flex-1 p-3 sm:p-4 overflow-hidden relative bg-slate-100/70 dark:bg-[#040711] flex flex-col">
           
           {/* ------------------------------------------------------------- */}
           {/* MODE A: SIDE-BY-SIDE PANELS (Left Image vs Right Image)       */}
@@ -623,27 +578,27 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full w-full">
               
               {/* LEFT SATELLITE PASS */}
-              <div className="flex flex-col h-full bg-[#080d19] rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+              <div className="flex flex-col h-full bg-white dark:bg-[#080d19] rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm">
                 {/* Header Strip */}
-                <div className="px-3.5 py-2 bg-[#0c1322] border-b border-slate-800 flex items-center justify-between shrink-0">
+                <div className="px-3.5 py-2 bg-slate-50 dark:bg-[#0c1322] border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
                   <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                    <span className="text-xs font-telemetry font-bold text-white uppercase">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-telemetry font-bold text-slate-900 dark:text-white uppercase">
                       BASELINE PASS • YEAR {leftYear}
                     </span>
-                    <span className="text-[10.5px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                    <span className="text-[10.5px] font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/30 font-bold">
                       {leftImg?.date || `${leftYear}-06-15`}
                     </span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-[10px] font-telemetry text-slate-400 hidden sm:inline">
+                    <span className="text-[10px] font-telemetry text-slate-500 dark:text-slate-400 hidden sm:inline">
                       Cloud: 0.0% • Optical RGB
                     </span>
                     {leftImg?.imageUrl && (
                       <button
                         type="button"
                         onClick={() => handleDownloadImage(leftImg.imageUrl, leftYear)}
-                        className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-slate-700 text-[10.5px] font-telemetry font-bold flex items-center space-x-1 transition-colors"
+                        className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-white/5 dark:hover:bg-emerald-500/20 text-slate-700 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 border border-slate-300 dark:border-zinc-700 text-[10.5px] font-telemetry font-bold flex items-center space-x-1 transition-colors"
                         title="Download raw optical photograph"
                       >
                         <Download className="w-3 h-3" />
@@ -654,7 +609,7 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                 </div>
 
                 {/* Image Container */}
-                <div className="flex-1 relative flex items-center justify-center bg-[#02050b] overflow-hidden group">
+                <div className="flex-1 relative flex items-center justify-center bg-slate-950 overflow-hidden group">
                   {loadingYears[leftYear] ? (
                     <div className="flex flex-col items-center justify-center space-y-3 p-6 text-center">
                       <div className="w-12 h-12 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
@@ -687,27 +642,27 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
               </div>
 
               {/* RIGHT SATELLITE PASS */}
-              <div className="flex flex-col h-full bg-[#080d19] rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+              <div className="flex flex-col h-full bg-white dark:bg-[#080d19] rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm">
                 {/* Header Strip */}
-                <div className="px-3.5 py-2 bg-[#0c1322] border-b border-slate-800 flex items-center justify-between shrink-0">
+                <div className="px-3.5 py-2 bg-slate-50 dark:bg-[#0c1322] border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
                   <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-orbit-cyan shadow-[0_0_8px_rgba(0,240,255,0.8)]" />
-                    <span className="text-xs font-telemetry font-bold text-white uppercase">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                    <span className="text-xs font-telemetry font-bold text-slate-900 dark:text-white uppercase">
                       COMPARATIVE PASS • YEAR {rightYear}
                     </span>
-                    <span className="text-[10.5px] font-mono text-orbit-cyan bg-orbit-cyan/10 px-1.5 py-0.5 rounded border border-orbit-cyan/30">
+                    <span className="text-[10.5px] font-mono text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-500/30 font-bold">
                       {rightImg?.date || `${rightYear}-06-15`}
                     </span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-[10px] font-telemetry text-slate-400 hidden sm:inline">
+                    <span className="text-[10px] font-telemetry text-slate-500 dark:text-slate-400 hidden sm:inline">
                       Cloud: 0.0% • Optical RGB
                     </span>
                     {rightImg?.imageUrl && (
                       <button
                         type="button"
                         onClick={() => handleDownloadImage(rightImg.imageUrl, rightYear)}
-                        className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-orbit-cyan/20 text-slate-300 hover:text-orbit-cyan border border-slate-700 text-[10.5px] font-telemetry font-bold flex items-center space-x-1 transition-colors"
+                        className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-blue-50 dark:bg-white/5 dark:hover:bg-blue-500/20 text-slate-700 hover:text-blue-700 dark:text-slate-300 dark:hover:text-blue-300 border border-slate-300 dark:border-zinc-700 text-[10.5px] font-telemetry font-bold flex items-center space-x-1 transition-colors"
                         title="Download raw optical photograph"
                       >
                         <Download className="w-3 h-3" />
@@ -718,11 +673,11 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                 </div>
 
                 {/* Image Container */}
-                <div className="flex-1 relative flex items-center justify-center bg-[#02050b] overflow-hidden group">
+                <div className="flex-1 relative flex items-center justify-center bg-slate-950 overflow-hidden group">
                   {loadingYears[rightYear] ? (
                     <div className="flex flex-col items-center justify-center space-y-3 p-6 text-center">
-                      <div className="w-12 h-12 rounded-full border-2 border-orbit-cyan/30 border-t-orbit-cyan animate-spin" />
-                      <span className="text-xs font-telemetry text-orbit-cyan font-bold">
+                      <div className="w-12 h-12 rounded-full border-2 border-blue-500/30 border-t-blue-500 animate-spin" />
+                      <span className="text-xs font-telemetry text-blue-400 font-bold">
                         Retrieving {rightYear} calibrated satellite pass for {activePlaceName}...
                       </span>
                       <span className="text-[10px] text-slate-500 font-telemetry">
@@ -737,7 +692,7 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                         className="max-h-full max-w-full object-contain rounded-xl shadow-2xl transition-transform duration-300 hover:scale-[1.02]"
                       />
                       <div className="absolute bottom-4 right-4 px-2.5 py-1 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-700/80 text-[10px] font-telemetry text-slate-300 flex items-center space-x-2 pointer-events-none">
-                        <span className="text-orbit-cyan font-bold">{activePlaceName} ({rightYear})</span>
+                        <span className="text-blue-400 font-bold">{activePlaceName} ({rightYear})</span>
                         <span className="text-slate-500">•</span>
                         <span>{rightImg.satellite}</span>
                       </div>
@@ -753,72 +708,7 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
             </div>
           )}
 
-          {/* ------------------------------------------------------------- */}
-          {/* MODE B: INTERACTIVE SWIPE / SPLIT SLIDER                      */}
-          {/* ------------------------------------------------------------- */}
-          {viewMode === 'swipe' && (
-            <div
-              ref={swipeContainerRef}
-              className="relative w-full h-full bg-[#02050b] rounded-2xl border border-slate-800 overflow-hidden select-none cursor-ew-resize shadow-2xl flex items-center justify-center"
-              onClick={(e) => handleSwipeMove(e.clientX)}
-            >
-              {leftImg?.imageUrl && rightImg?.imageUrl ? (
-                <>
-                  {/* Underneath Layer: Right Image (Year B) */}
-                  <img
-                    src={rightImg.imageUrl}
-                    alt={`Right Satellite ${rightYear}`}
-                    className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-                  />
 
-                  {/* Overneath Layer: Left Image (Year A) with clip-path */}
-                  <div
-                    className="absolute inset-0 overflow-hidden pointer-events-none"
-                    style={{ clipPath: `inset(0 ${100 - swipePosition}% 0 0)` }}
-                  >
-                    <img
-                      src={leftImg.imageUrl}
-                      alt={`Left Satellite ${leftYear}`}
-                      className="absolute inset-0 w-full h-full object-contain"
-                    />
-                  </div>
-
-                  {/* Drag Handle Divider Line */}
-                  <div
-                    className="absolute top-0 bottom-0 w-1 bg-orbit-cyan shadow-[0_0_15px_rgba(0,240,255,0.9)] z-20"
-                    style={{ left: `${swipePosition}%` }}
-                    onMouseDown={handleMouseDown}
-                  >
-                    <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-orbit-cyan text-slate-950 font-bold flex items-center justify-center shadow-lg ring-4 ring-[#080d1a]">
-                      <ArrowLeftRight className="w-4 h-4" />
-                    </div>
-                  </div>
-
-                  {/* Left & Right Badges */}
-                  <div className="absolute top-4 left-4 z-10 px-3 py-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-emerald-500/50 text-xs font-telemetry text-emerald-300 font-bold flex items-center space-x-1.5 shadow-lg">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span>YEAR {leftYear} (BASELINE)</span>
-                  </div>
-
-                  <div className="absolute top-4 right-4 z-10 px-3 py-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-orbit-cyan/50 text-xs font-telemetry text-orbit-cyan font-bold flex items-center space-x-1.5 shadow-lg">
-                    <span>YEAR {rightYear} (COMPARATIVE)</span>
-                    <span className="w-2 h-2 rounded-full bg-orbit-cyan" />
-                  </div>
-
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 px-4 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-slate-700 text-[11px] font-telemetry text-slate-300 shadow-md">
-                    Drag handle horizontally to reveal raw land surface changes
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center space-y-3">
-                  <div className="w-10 h-10 rounded-full border-2 border-orbit-cyan/30 border-t-orbit-cyan animate-spin" />
-                  <span className="text-xs font-telemetry text-slate-300">
-                    Loading comparative satellite passes for swipe slider...
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ------------------------------------------------------------- */}
           {/* MODE C: ALL-YEARS FILMSTRIP GALLERY (2020 TO 2026)            */}
@@ -827,14 +717,14 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
             <div className="h-full w-full overflow-y-auto pr-1">
               <div className="mb-2.5 flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-telemetry font-bold text-white uppercase">
+                  <span className="text-xs font-telemetry font-bold text-slate-900 dark:text-white uppercase">
                     MULTI-YEAR TEMPORAL SATELLITE REEL: {activePlaceName}
                   </span>
-                  <p className="text-[11px] text-slate-400 font-telemetry">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-telemetry">
                     Inspect individual raw observation passes. Click &quot;Set as Left&quot; or &quot;Set as Right&quot; to compare any pair.
                   </p>
                 </div>
-                <span className="text-xs font-mono text-orbit-cyan bg-orbit-cyan/10 px-2 py-0.5 rounded border border-orbit-cyan/30 font-bold">
+                <span className="text-xs font-mono text-blue-700 dark:text-cyan-400 bg-blue-50 dark:bg-cyan-500/10 px-2 py-0.5 rounded border border-blue-200 dark:border-cyan-500/30 font-bold">
                   {AVAILABLE_YEARS.length} CALIBRATED OBSERVATION YEARS
                 </span>
               </div>
@@ -849,28 +739,28 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                   return (
                     <div
                       key={`gallery-${yr}`}
-                      className={`flex flex-col bg-[#090e1c] rounded-2xl border transition-all overflow-hidden shadow-lg ${
+                      className={`flex flex-col bg-white dark:bg-[#090e1c] rounded-2xl border transition-all overflow-hidden shadow-sm ${
                         isLeft
-                          ? 'ring-2 ring-emerald-500 border-emerald-500/80 shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+                          ? 'ring-2 ring-emerald-500 border-emerald-500 shadow-md'
                           : isRight
-                          ? 'ring-2 ring-orbit-cyan border-orbit-cyan/80 shadow-[0_0_20px_rgba(0,240,255,0.3)]'
-                          : 'border-slate-800 hover:border-slate-600'
+                          ? 'ring-2 ring-blue-500 border-blue-500 shadow-md'
+                          : 'border-slate-200 dark:border-zinc-800 hover:border-slate-400 dark:hover:border-zinc-700'
                       }`}
                     >
                       {/* Card Header */}
-                      <div className="px-3 py-1.5 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
-                        <span className="text-xs font-telemetry font-bold text-white flex items-center space-x-1.5">
-                          <Calendar className="w-3 h-3 text-orbit-cyan" />
+                      <div className="px-3 py-1.5 bg-slate-50 dark:bg-[#0d1424] border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between">
+                        <span className="text-xs font-telemetry font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                          <Calendar className="w-3 h-3 text-blue-600 dark:text-cyan-400" />
                           <span>YEAR {yr}</span>
                         </span>
                         <div className="flex items-center space-x-1">
                           {isLeft && (
-                            <span className="text-[9.5px] font-bold font-telemetry px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950">
+                            <span className="text-[9.5px] font-bold font-telemetry px-1.5 py-0.5 rounded bg-emerald-500 text-white">
                               PASS A
                             </span>
                           )}
                           {isRight && (
-                            <span className="text-[9.5px] font-bold font-telemetry px-1.5 py-0.5 rounded bg-orbit-cyan text-slate-950">
+                            <span className="text-[9.5px] font-bold font-telemetry px-1.5 py-0.5 rounded bg-blue-600 text-white">
                               PASS B
                             </span>
                           )}
@@ -878,10 +768,10 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                       </div>
 
                       {/* Thumbnail Container */}
-                      <div className="h-44 bg-[#02050b] relative flex items-center justify-center overflow-hidden">
+                      <div className="h-44 bg-slate-950 relative flex items-center justify-center overflow-hidden">
                         {isLoading ? (
                           <div className="flex flex-col items-center justify-center space-y-2 p-2 text-center">
-                            <div className="w-8 h-8 rounded-full border-2 border-orbit-cyan/30 border-t-orbit-cyan animate-spin" />
+                            <div className="w-8 h-8 rounded-full border-2 border-blue-500/30 border-t-blue-500 animate-spin" />
                             <span className="text-[10.5px] font-telemetry text-slate-400">Loading {yr}...</span>
                           </div>
                         ) : record?.imageUrl ? (
@@ -894,7 +784,7 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                           <button
                             type="button"
                             onClick={() => ensureYearImageLoaded(yr)}
-                            className="text-xs font-telemetry text-orbit-cyan hover:underline p-3 text-center"
+                            className="text-xs font-telemetry text-blue-400 hover:underline p-3 text-center"
                           >
                             Click to fetch {yr} pass
                           </button>
@@ -913,14 +803,14 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                       </div>
 
                       {/* Card Footer Actions */}
-                      <div className="p-2 bg-[#0a1020] border-t border-slate-800 flex items-center justify-between gap-1.5">
+                      <div className="p-2 bg-slate-50 dark:bg-[#0a1020] border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-1.5">
                         <button
                           type="button"
                           onClick={() => { setLeftYear(yr); setViewMode('side-by-side'); }}
                           className={`flex-1 py-1 rounded-xl text-[10.5px] font-telemetry font-bold transition-colors ${
                             isLeft
-                              ? 'bg-emerald-500 text-slate-950'
-                              : 'bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-slate-700/60'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-slate-100 hover:bg-emerald-50 dark:bg-white/5 dark:hover:bg-emerald-500/20 text-slate-700 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 border border-slate-200 dark:border-zinc-700'
                           }`}
                         >
                           Set Left (A)
@@ -930,8 +820,8 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                           onClick={() => { setRightYear(yr); setViewMode('side-by-side'); }}
                           className={`flex-1 py-1 rounded-xl text-[10.5px] font-telemetry font-bold transition-colors ${
                             isRight
-                              ? 'bg-orbit-cyan text-slate-950'
-                              : 'bg-white/5 hover:bg-orbit-cyan/20 text-slate-300 hover:text-orbit-cyan border border-slate-700/60'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-100 hover:bg-blue-50 dark:bg-white/5 dark:hover:bg-blue-500/20 text-slate-700 hover:text-blue-700 dark:text-slate-300 dark:hover:text-blue-300 border border-slate-200 dark:border-zinc-700'
                           }`}
                         >
                           Set Right (B)
@@ -949,21 +839,21 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
         {/* ======================================================================= */}
         {/* 4. BOTTOM FOOTER TELEMETRY & WORKSPACE SYNC LINK                        */}
         {/* ======================================================================= */}
-        <div className="px-4 py-2.5 bg-[#0b1222] border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs font-telemetry shrink-0">
-          <div className="flex items-center space-x-3 text-slate-400">
+        <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#0b1222] border-t border-slate-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs font-telemetry shrink-0">
+          <div className="flex items-center space-x-3 text-slate-600 dark:text-slate-400">
             <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>Left: <strong className="text-white">{leftYear}</strong></span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>Left: <strong className="text-slate-900 dark:text-white">{leftYear}</strong></span>
             </span>
-            <span className="text-slate-600">➔</span>
+            <span className="text-slate-400 dark:text-slate-600">➔</span>
             <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full bg-orbit-cyan" />
-              <span>Right: <strong className="text-white">{rightYear}</strong></span>
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span>Right: <strong className="text-slate-900 dark:text-white">{rightYear}</strong></span>
             </span>
             <span className="hidden md:inline text-slate-500">
               ({Math.abs(rightYear - leftYear)} Year Interval)
             </span>
-            <span className="hidden lg:inline text-slate-500">
+            <span className="hidden lg:inline text-slate-400 dark:text-slate-500">
               • Sensor: Copernicus Sentinel-2 L2A / Esri High-Resolution World Imagery
             </span>
           </div>
@@ -975,10 +865,10 @@ export const RawSatelliteModal: React.FC<RawSatelliteModalProps> = ({
                 onClose();
                 onSelectCityForAnalysis(`Analyze ${activePlaceName} between ${leftYear} and ${rightYear}`);
               }}
-              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-orbit-cyan/20 to-emerald-500/20 hover:from-orbit-cyan/30 hover:to-emerald-500/30 text-orbit-cyan hover:text-white border border-orbit-cyan/40 text-xs font-telemetry font-bold flex items-center space-x-1.5 transition-all shadow-sm"
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-bold text-xs font-telemetry flex items-center space-x-1.5 transition-all shadow-sm"
               title="Run full AI change detection analysis on this place and timeline"
             >
-              <Sparkles className="w-3.5 h-3.5 text-orbit-cyan" />
+              <Sparkles className="w-3.5 h-3.5 text-white" />
               <span>Launch Full AI Spectral Analysis on {activePlaceName} ({leftYear}➔{rightYear})</span>
             </button>
           )}

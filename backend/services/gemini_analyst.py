@@ -218,23 +218,32 @@ async def query_gemini_analyst_chat(
 
         history_lines = "\n".join([f"{h.get('role')}: {h.get('content')}" for h in chat_history[-6:]])
 
-        prompt = f"""You are the Lead Earth Observation & Remote Sensing Analyst at SatQueryAI.
-Your task is to answer ANY question from the user accurately, scientifically, and in a helpful, accessible tone.
-You can answer questions about the current analysis session, Copernicus Sentinel-2 satellite data, spectral indices (NDVI, NDBI, NDWI), environmental change, deforestation, urbanization, water dynamics, world locations, or GIS concepts.
+        prompt = f"""You are the AI Geospatial Analyst at SatQueryAI.
+Your primary objective is to ANSWER ONLY WHAT THE USER ASKS.
 
-CURRENT ANALYSIS CONTEXT:
+STRICT CONVERSATIONAL INSTRUCTIONS:
+1. Answer the user's specific question directly, concisely, and factually in 1 to 3 sentences maximum.
+2. DO NOT provide unasked information, entire analysis dumps, sensor specifications, formulas, or unrelated categories.
+   - If the user asks about vegetation: discuss ONLY vegetation. Never mention urban development, water, or general statistics unless asked.
+   - If the user asks about urban growth / construction: discuss ONLY urban/construction.
+   - If the user asks about water: discuss ONLY water bodies.
+   - If the user asks a specific question about a location, index, or date: answer THAT question directly.
+3. NEVER dump the whole analysis summary or recite observation dates, sensor names, or methodology unless explicitly requested.
+4. Keep the response natural, highly focused, professional, and free of filler.
+
+CURRENT SESSION CONTEXT (Use ONLY what is needed to answer the question):
 - Location: {loc_name}
 - Observation Window: {before_date} to {after_date}
-- Total Changed Footprint: {changed_ha} hectares ({pct_changed}% of analyzed area)
-- Detected Change Hotspots:
-{chr(10).join(regions_summary) if regions_summary else "General observation mode"}
+- Total Changed Footprint: {changed_ha} ha ({pct_changed}% of AOI)
+- Detected Hotspots:
+{chr(10).join(regions_summary) if regions_summary else "Standard observation mode"}
 
 CONVERSATION HISTORY:
 {history_lines}
 
 USER QUESTION: {user_message}
 
-Answer the user directly with clear markdown formatting, bullet points when appropriate, and authoritative remote-sensing facts. Keep it concise yet thorough.
+Direct, focused answer (answer ONLY what was asked):
 """
         for model_name in ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.5-flash-lite"]:
             try:
@@ -324,13 +333,13 @@ async def answer_conversational_query(
         target_pool = regions
         if "urban" in msg_lower or "built" in msg_lower or "growth" in msg_lower or "expansion" in msg_lower:
             target_pool = [r for r in regions if "Urban" in r.get("category", "") or "Built" in r.get("user_label", "")]
-            filter_category = "Urban development"
+            filter_category = "urban"
         elif "vegetation" in msg_lower or "forest" in msg_lower or "green" in msg_lower:
-            target_pool = [r for r in regions if "Vegetation" in r.get("category", "")]
-            filter_category = "Vegetation loss"
+            target_pool = [r for r in regions if "Vegetation" in r.get("category", "") or "deforestation" in r.get("category", "").lower()]
+            filter_category = "vegetation"
         elif "water" in msg_lower:
             target_pool = [r for r in regions if "Water" in r.get("category", "")]
-            filter_category = "Water reduction"
+            filter_category = "water"
 
         if target_pool:
             target = target_pool[0]
@@ -343,16 +352,11 @@ async def answer_conversational_query(
             hotspot_num = target.get("indicator_number", 1)
             reply = (
                 f"The largest detected {cat_desc} occurred **{direction}** of {loc_name}, "
-                f"covering approximately **{target['area_hectares']} hectares** (Hotspot #{hotspot_num}).\n\n"
-                f"🛰️ **Multispectral Measurements & Evidence:**\n"
-                f"• Coordinates: {target['centroid'][1]:.4f}°N, {target['centroid'][0]:.4f}°E\n"
-                f"• Δ NDBI: **{target['delta_ndbi']:+.3f}** (Built-up index shift)\n"
-                f"• Δ NDVI: **{target['delta_ndvi']:+.3f}** (Vegetation index delta)\n"
-                f"• Sensor: Copernicus Sentinel-2 MSI (10m resolution)\n"
-                f"• Detection Confidence: **{target['confidence_pct']}%**\n\n"
-                f"I have centered and highlighted Hotspot #{hotspot_num} on your map."
+                f"covering **{target['area_hectares']} hectares** (Hotspot #{hotspot_num}) "
+                f"with ΔNDBI of **{target['delta_ndbi']:+.3f}** and ΔNDVI of **{target['delta_ndvi']:+.3f}**. "
+                f"I have centered and highlighted it on your map."
             )
-            suggested_actions = ["Was it urban development?", "When did it happen?", "Show only vegetation loss", "What is NDBI?"]
+            suggested_actions = ["Was it urban development?", "How did vegetation change?", "When did it happen?"]
             return ChatResponse(
                 reply=reply,
                 analysis_id=analysis_id,
@@ -375,43 +379,34 @@ async def answer_conversational_query(
             
             if is_urban:
                 reply = (
-                    f"**Yes, Hotspot #{hotspot_num} is classified as Urban development.**\n\n"
-                    f"• Surface footprint: **{target['area_hectares']} hectares**\n"
-                    f"• Spectral Confirmation: An NDBI increase of **{target['delta_ndbi']:+.3f}** coupled with "
-                    f"an NDVI drop of **{target['delta_ndvi']:+.3f}** confirms surface ground sealing and newly constructed impervious features rather than seasonal soil dryness.\n"
-                    f"• Evidence Provenance: Sentinel-2 Level-2A surface reflectance."
+                    f"**Yes, Hotspot #{hotspot_num} is urban development ({target['area_hectares']} ha).** "
+                    f"An NDBI rise of **{target['delta_ndbi']:+.3f}** confirms newly constructed impervious surfaces."
                 )
             else:
                 reply = (
-                    f"**No, Hotspot #{hotspot_num} was identified primarily as {target['user_label']}.**\n\n"
-                    f"• Surface footprint: **{target['area_hectares']} hectares**\n"
-                    f"• Spectral Evidence: ΔNDVI is **{target['delta_ndvi']:+.3f}** while ΔNDBI is **{target['delta_ndbi']:+.3f}**. "
-                    f"This signature corresponds to vegetation canopy alteration rather than built-up construction."
+                    f"**No, Hotspot #{hotspot_num} is {target['user_label']} ({target['area_hectares']} ha).** "
+                    f"Its spectral shift is characterized by vegetation change (ΔNDVI: **{target['delta_ndvi']:+.3f}**) rather than construction."
                 )
-            suggested_actions = ["When did it happen?", "Where is the next biggest change?", "Show only vegetation loss"]
+            suggested_actions = ["When did it happen?", "Where is the largest change?", "How did vegetation change?"]
             return ChatResponse(
                 reply=reply,
                 analysis_id=analysis_id,
                 suggested_actions=suggested_actions,
                 highlight_region_ids=highlight_ids,
-                filter_category="Urban development" if is_urban else target.get("category"),
+                filter_category="urban" if is_urban else target.get("category"),
                 zoom_to=zoom_to,
                 selected_region_id=selected_region_id
             )
 
-    # 3. Multi-turn Follow-up: "When did it happen?"
+    # 3. Multi-turn Follow-up: "When did it happen?" / "What year?"
     if any(phrase in msg_lower for phrase in ["when did", "what year", "timing", "when happened", "timeline"]):
         accel_start = max(before_year, after_year - 2)
         reply = (
-            f"The physical alteration occurred within the monitoring window between the baseline observation on "
-            f"**{before_date}** and the comparative pass on **{after_date}**.\n\n"
-            f"📅 **Temporal Breakdown:**\n"
-            f"• Baseline verification: **{before_date}** (Cloud: {analysis_context.get('cloud_percentage_before', 0)}%)\n"
-            f"• Peak transition period: **{accel_start}–{after_year}**\n"
-            f"• Comparative verification: **{after_date}** (Cloud: {analysis_context.get('cloud_percentage_after', 0)}%)\n\n"
-            f"You can open the **Time Changes (2020–2026)** drawer below the map to observe the annual satellite passes for each year."
+            f"The physical changes were detected between **{before_date}** and **{after_date}**, "
+            f"with concentrated activity between **{accel_start} and {after_year}**. "
+            f"You can use the Time Changes drawer below the map to observe specific annual passes."
         )
-        suggested_actions = ["Where did the biggest urban changes occur?", "Show only vegetation loss", "Explain confidence score"]
+        suggested_actions = ["Where did the biggest change happen?", "How did vegetation change?", "How much urban growth occurred?"]
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
@@ -420,23 +415,31 @@ async def answer_conversational_query(
             filter_category=filter_category
         )
 
-    # 4. Filter Intent: "Show only vegetation loss"
-    if "vegetation" in msg_lower and any(w in msg_lower for w in ["loss", "only", "decrease", "drop", "show"]):
-        filter_category = "Vegetation loss"
-        veg_regions = [r for r in regions if "loss" in r.get("category", "").lower() or r.get("delta_ndvi", 0) < -0.10]
-        total_veg_ha = sum(r.get("area_hectares", 0) for r in veg_regions)
-        highlight_ids = [r["id"] for r in veg_regions[:5]]
+    # 4. Specific Question on Vegetation (e.g. "What happened to vegetation?", "Has vegetation changed?", "Show vegetation")
+    if any(w in msg_lower for w in ["vegetation", "forest", "green", "canopy", "plants", "crops", "deforest"]):
+        filter_category = "vegetation"
+        veg_regions = [r for r in regions if "vegetation" in r.get("category", "").lower() or "deforestation" in r.get("category", "").lower() or "canopy" in r.get("user_label", "").lower() or abs(r.get("delta_ndvi", 0)) > 0.08]
+        loss_regions = [r for r in veg_regions if r.get("delta_ndvi", 0) < 0 or "loss" in r.get("category", "").lower() or "deforestation" in r.get("category", "").lower()]
+        gain_regions = [r for r in veg_regions if r.get("delta_ndvi", 0) > 0 or "growth" in r.get("category", "").lower() or "regrowth" in r.get("category", "").lower()]
+        loss_ha = sum(r.get("area_hectares", 0) for r in loss_regions)
+        gain_ha = sum(r.get("area_hectares", 0) for r in gain_regions)
+        mean_delta_ndvi = analysis_context.get("indices_summary", {}).get("delta_ndvi_mean", -0.04)
         
-        reply = (
-            f"🌿 **Displaying Vegetation Loss Clusters**\n\n"
-            f"I have filtered the map to show **Vegetation loss** zones ({len(veg_regions)} clusters totaling **{total_veg_ha:.2f} ha**).\n\n"
-            f"Each highlighted cluster represents a persistent decrease in photosynthetic canopy (ΔNDVI ≤ -0.10)."
-        )
+        if loss_ha > 0 and gain_ha > 0:
+            reply = f"Vegetation in {loc_name} showed **{loss_ha:.1f} ha** of canopy reduction alongside **{gain_ha:.1f} ha** of regrowth (overall mean ΔNDVI: **{mean_delta_ndvi:+.3f}**). I've highlighted the affected vegetation zones on your map."
+        elif loss_ha > 0:
+            reply = f"Vegetation in {loc_name} decreased by **{loss_ha:.1f} hectares** across {len(loss_regions)} detected zones (mean ΔNDVI: **{mean_delta_ndvi:+.3f}**). The primary reduction clusters are highlighted on your map."
+        elif gain_ha > 0:
+            reply = f"Vegetation in {loc_name} increased by **{gain_ha:.1f} hectares** across {len(gain_regions)} zones (mean ΔNDVI: **{mean_delta_ndvi:+.3f}**). I've highlighted the regrowth zones on your map."
+        else:
+            reply = f"No significant vegetation loss was detected in {loc_name} (mean ΔNDVI: **{mean_delta_ndvi:+.3f}**)."
+            
+        highlight_ids = [r["id"] for r in (loss_regions or veg_regions)[:5]]
         if veg_regions:
-            zoom_to = [veg_regions[0]["centroid"][0], veg_regions[0]["centroid"][1], 13.0]
+            zoom_to = [veg_regions[0]["centroid"][0], veg_regions[0]["centroid"][1], 13.5]
             selected_region_id = veg_regions[0]["id"]
             
-        suggested_actions = ["Show urban development", "Reset filters", "Where did the biggest change happen?"]
+        suggested_actions = ["Where did the biggest change happen?", "How much urban development occurred?", "What is NDVI?"]
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
@@ -447,26 +450,23 @@ async def answer_conversational_query(
             selected_region_id=selected_region_id
         )
 
-    # 5. Filter Intent: "Show urban development" or "Has urbanization increased?"
-    if "urban" in msg_lower and any(w in msg_lower for w in ["only", "show", "growth", "development", "increased", "expansion"]):
-        filter_category = "Urban development"
-        urban_regions = [r for r in regions if "urban" in r.get("category", "").lower() or r.get("delta_ndbi", 0) > 0.05]
+    # 5. Specific Question on Urban / Built-up (e.g. "What happened to urban?", "Has construction increased?")
+    if any(w in msg_lower for w in ["urban", "construction", "built", "building", "development", "expansion", "growth"]):
+        filter_category = "urban"
+        urban_regions = [r for r in regions if "urban" in r.get("category", "").lower() or "built" in r.get("user_label", "").lower() or r.get("delta_ndbi", 0) > 0.05]
         total_urban_ha = sum(r.get("area_hectares", 0) for r in urban_regions)
-        highlight_ids = [r["id"] for r in urban_regions[:5]]
+        mean_ndbi = analysis_context.get("indices_summary", {}).get("delta_ndbi_mean", 0.08)
         
         reply = (
-            f"🏙️ **Urbanization Assessment for {loc_name}**\n\n"
-            f"**Yes, urbanization and built-up land have expanded.**\n"
-            f"• Detected new development clusters: **{len(urban_regions)}**\n"
-            f"• Total newly built footprint: **{total_urban_ha:.2f} ha**\n"
-            f"• Average Δ NDBI: **+{analysis_context.get('indices_summary', {}).get('delta_ndbi_mean', 0.12):.3f}**\n\n"
-            f"The map has been updated to highlight the primary expansion zones."
+            f"Urban and built-up land expanded by **{total_urban_ha:.1f} hectares** across **{len(urban_regions)} clusters** in {loc_name} "
+            f"(mean ΔNDBI: **{mean_ndbi:+.3f}**). The primary expansion areas are highlighted on your map."
         )
+        highlight_ids = [r["id"] for r in urban_regions[:5]]
         if urban_regions:
-            zoom_to = [urban_regions[0]["centroid"][0], urban_regions[0]["centroid"][1], 13.0]
+            zoom_to = [urban_regions[0]["centroid"][0], urban_regions[0]["centroid"][1], 13.5]
             selected_region_id = urban_regions[0]["id"]
             
-        suggested_actions = ["Where did the biggest urban changes occur?", "Show only vegetation loss", "Reset filters"]
+        suggested_actions = ["Where did the biggest urban change happen?", "How did vegetation change?", "What is NDBI?"]
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
@@ -477,36 +477,57 @@ async def answer_conversational_query(
             selected_region_id=selected_region_id
         )
 
-    # 6. Reset Filters
-    if any(w in msg_lower for w in ["reset", "show all", "show everything", "clear filter"]):
-        reply = "Map filters and highlights have been reset. Showing all detected change categories and continuous heatmap."
+    # 6. Specific Question on Water / Hydrology (e.g. "Did water bodies change?", "What happened to water?")
+    if any(w in msg_lower for w in ["water", "lake", "river", "flood", "reservoir", "hydrology", "canal", "moisture"]):
+        filter_category = "water"
+        water_regions = [r for r in regions if "water" in r.get("category", "").lower() or abs(r.get("delta_ndwi", 0)) > 0.05]
+        total_water_ha = sum(r.get("area_hectares", 0) for r in water_regions)
+        mean_ndwi = analysis_context.get("indices_summary", {}).get("delta_ndwi_mean", 0.0)
+        
+        reply = (
+            f"Surface water and moisture dynamics changed across **{total_water_ha:.1f} hectares** in {loc_name} "
+            f"(mean ΔNDWI: **{mean_ndwi:+.3f}**). The relevant hydrological zones are highlighted on your map."
+        )
+        highlight_ids = [r["id"] for r in water_regions[:5]]
+        if water_regions:
+            zoom_to = [water_regions[0]["centroid"][0], water_regions[0]["centroid"][1], 13.5]
+            selected_region_id = water_regions[0]["id"]
+            
+        suggested_actions = ["Where did the biggest change happen?", "How did vegetation change?", "What is NDWI?"]
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
-            suggested_actions=["Where did the biggest change happen?", "Show only vegetation loss", "Show urban development"],
+            suggested_actions=suggested_actions,
+            highlight_region_ids=highlight_ids,
+            filter_category=filter_category,
+            zoom_to=zoom_to,
+            selected_region_id=selected_region_id
+        )
+
+    # 7. Reset Filters
+    if any(w in msg_lower for w in ["reset", "show all", "show everything", "clear filter"]):
+        reply = "Map filters and highlights have been reset. All change categories are now visible."
+        return ChatResponse(
+            reply=reply,
+            analysis_id=analysis_id,
+            suggested_actions=["Where did the biggest change happen?", "How did vegetation change?", "How much urban growth occurred?"],
             highlight_region_ids=[],
             filter_category=None
         )
 
-    # 7. Reliability / Confidence Explanation
+    # 8. Reliability / Confidence Explanation
     if any(w in msg_lower for w in ["reliable", "confidence", "how reliable", "accuracy", "defend"]):
         conf = analysis_context.get("confidence", {})
         score = conf.get("overall_score", 85)
         rating = conf.get("rating", "High")
         reply = (
-            f"🛡️ **Evidence & Confidence Audit Trail**\n\n"
-            f"This analysis has an overall confidence score of **{score}% ({rating})**.\n\n"
-            f"**Why {score}% confidence?**\n"
-            f"• Satellite Sensor: Copernicus Sentinel-2 MSI (10 m Ground Sample Distance)\n"
-            f"• Baseline Pass: {before_date} (Cloud coverage: {analysis_context.get('cloud_percentage_before', 0)}%)\n"
-            f"• Comparative Pass: {after_date} (Cloud coverage: {analysis_context.get('cloud_percentage_after', 0)}%)\n"
-            f"• Multi-spectral separation: NDBI/NDVI deltas exceed sensor noise floors.\n"
-            f"• Morphological filtering: Connected-component kernel eliminates isolated 1-pixel noise."
+            f"The analysis has an overall confidence score of **{score}% ({rating})**, derived from Copernicus Sentinel-2 MSI "
+            f"observations with cloud masking and morphological noise filtering."
         )
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
-            suggested_actions=["Where did the biggest change happen?", "Show only vegetation loss", "Download report"],
+            suggested_actions=["Where did the biggest change happen?", "How did vegetation change?", "Download report"],
             highlight_region_ids=None,
             filter_category=None
         )
@@ -525,180 +546,119 @@ async def answer_conversational_query(
     # 8. Spectral Indices Questions: NDVI, NDBI, NDWI
     if "ndvi" in msg_lower:
         reply = (
-            f"🌿 **NDVI (Normalized Difference Vegetation Index)**\n\n"
-            f"**Formula:** `(NIR - Red) / (NIR + Red)`\n\n"
-            f"• **How it works:** Healthy chlorophyll absorbs Red light for photosynthesis while strongly scattering and reflecting Near-Infrared (NIR) light. Higher NDVI (+0.4 to +0.8) indicates dense, vital vegetation; lower NDVI (&lt;0.2) indicates bare soil, water, or built infrastructure.\n"
-            f"• **In this analysis ({loc_name}):** Baseline mean NDVI was **{analysis_context.get('indices_summary', {}).get('ndvi_before_mean', 0.42)}** and comparative mean was **{analysis_context.get('indices_summary', {}).get('ndvi_after_mean', 0.38)}** (ΔNDVI: **{analysis_context.get('indices_summary', {}).get('delta_ndvi_mean', -0.04):+.3f}**)."
+            f"**NDVI (Normalized Difference Vegetation Index)** measures green vegetation density and vitality using `(NIR - Red) / (NIR + Red)`. "
+            f"In {loc_name}, baseline mean was **{analysis_context.get('indices_summary', {}).get('ndvi_before_mean', 0.42)}** and comparative mean was **{analysis_context.get('indices_summary', {}).get('ndvi_after_mean', 0.38)}** "
+            f"(ΔNDVI: **{analysis_context.get('indices_summary', {}).get('delta_ndvi_mean', -0.04):+.3f}**)."
         )
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
-            suggested_actions=["What is NDBI?", "What is NDWI?", "Where did the biggest change happen?"],
+            suggested_actions=["What is NDBI?", "How did vegetation change?", "Where did the biggest change happen?"],
         )
 
     if "ndbi" in msg_lower:
         reply = (
-            f"🏙️ **NDBI (Normalized Difference Built-up Index)**\n\n"
-            f"**Formula:** `(SWIR - NIR) / (SWIR + NIR)`\n\n"
-            f"• **How it works:** Impervious surfaces like concrete, asphalt, metal roofing, and paved roads exhibit high reflectance in the Shortwave Infrared (SWIR) region compared to Near-Infrared (NIR). High NDBI (&gt;0.05) reliably isolates built structures from natural vegetation.\n"
-            f"• **In this analysis ({loc_name}):** Mean NDBI shifted by **{analysis_context.get('indices_summary', {}).get('delta_ndbi_mean', 0.08):+.3f}**, confirming new ground paving and structural expansion."
+            f"**NDBI (Normalized Difference Built-up Index)** isolates impervious surfaces like concrete, roads, and buildings using `(SWIR - NIR) / (SWIR + NIR)`. "
+            f"In {loc_name}, mean NDBI shifted by **{analysis_context.get('indices_summary', {}).get('delta_ndbi_mean', 0.08):+.3f}**, indicating newly paved ground and structural development."
         )
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
-            suggested_actions=["What is NDVI?", "Where did the biggest urban changes occur?", "When did it happen?"],
+            suggested_actions=["What is NDVI?", "How much urban development occurred?", "When did it happen?"],
         )
 
     if "ndwi" in msg_lower:
         reply = (
-            f"💧 **NDWI (Normalized Difference Water Index)**\n\n"
-            f"**Formula:** `(Green - NIR) / (Green + NIR)`\n\n"
-            f"• **How it works:** Water bodies absorb virtually all Near-Infrared (NIR) energy while reflecting Green light. Positive NDWI (&gt;0.0) highlights surface water bodies, canals, and river channels, suppressing soil and vegetation noise.\n"
-            f"• **In this analysis ({loc_name}):** Mean NDWI delta was **{analysis_context.get('indices_summary', {}).get('delta_ndwi_mean', 0.0):+.3f}**."
+            f"**NDWI (Normalized Difference Water Index)** delineates open water bodies and moisture dynamics using `(Green - NIR) / (Green + NIR)`. "
+            f"In {loc_name}, mean NDWI delta was **{analysis_context.get('indices_summary', {}).get('delta_ndwi_mean', 0.0):+.3f}**."
         )
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
-            suggested_actions=["What is NDVI?", "What is NDBI?", "Show only vegetation loss"],
+            suggested_actions=["What is NDVI?", "Did water bodies change?", "Where did the biggest change happen?"],
         )
 
     # 9. Satellite & Sensor Questions: Sentinel-2
     if any(w in msg_lower for w in ["sentinel", "satellite", "sensor", "resolution", "copernicus"]):
         reply = (
-            f"🛰️ **Copernicus Sentinel-2 Satellite Constellation**\n\n"
-            f"• **Sensors:** Sentinel-2A and Sentinel-2B polar-orbiting satellites carrying the MultiSpectral Instrument (MSI).\n"
-            f"• **Spatial Resolution:** 10 meters per pixel (Red, Green, Blue, NIR Band 8); 20 meters (SWIR Bands 11/12, Vegetation Red Edge).\n"
-            f"• **Revisit Rate:** 5 days at the equator, enabling consistent, multi-year change tracking.\n"
-            f"• **Data Level:** Level-2A Bottom-of-Atmosphere (BOA) surface reflectance with atmospheric correction applied."
+            f"This analysis uses Copernicus Sentinel-2 MultiSpectral Instrument (MSI) Level-2A surface reflectance data "
+            f"at **10-meter spatial resolution** with a 5-day revisit cycle."
         )
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
-            suggested_actions=["What is NDVI and NDBI?", "Where did the biggest change happen?", "How reliable is the data?"],
+            suggested_actions=["What is NDVI?", "Where did the biggest change happen?", "How reliable is the data?"],
         )
 
     # 10. Regional Geographic Queries (Krishna River, Vijayawada, Tokyo, London, etc.)
     if "krishna" in msg_lower or "prakasam" in msg_lower:
         reply = (
-            f"🌊 **Krishna River Corridor — Vijayawada**\n\n"
-            f"• **Geography:** The Krishna River flows past Vijayawada, regulated by the historic **Prakasam Barrage** (constructed 1957) and framing Bhavani Island.\n"
-            f"• **Remote Sensing Dynamics:** Satellite passes capture significant hydrological shifts, seasonal sandbar exposure, barrage reservoir levels, and riparian floodplain cultivation along the banks between 2020 and 2026."
+            f"The Krishna River corridor in Vijayawada is regulated by the Prakasam Barrage. "
+            f"Satellite observations track seasonal sandbar exposure, barrage reservoir water levels, and riparian floodplain dynamics."
         )
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
-            suggested_actions=["Where did the biggest change happen?", "What is NDWI?", "When did it happen?"],
+            suggested_actions=["Did water bodies change?", "Where did the biggest change happen?", "When did it happen?"],
         )
 
     # 11. How-to & UI questions
     if any(w in msg_lower for w in ["how to", "swipe", "how do i", "how can i"]):
         reply = (
-            f"💡 **How to Use SatQueryAI Interactive Tools**\n\n"
-            f"• **Split-Swipe Comparison:** Drag the cyan **SWIPE** bar horizontally across the map to contrast baseline and comparative passes.\n"
-            f"• **Time Changes (2020–2026):** Click the **Time Changes** drawer at the bottom of the map to select any observation year from 2020 to 2026.\n"
-            f"• **Inspect Hotspots:** Click the **Map Indicators** button to display numbered pins (`#1`, `#2`, `#3`), and click any pin to inspect spectral measurements.\n"
-            f"• **Maximize Map:** Click the **Maximize (⛶)** button on the top right to expand the map across your entire screen."
+            f"Drag the cyan **SWIPE** slider horizontally to compare passes, click **Indicators** to inspect numbered hotspots, "
+            f"or use the **Time Changes** drawer below the map to browse individual years (2020–2026)."
         )
         return ChatResponse(
             reply=reply,
             analysis_id=analysis_id,
-            suggested_actions=["Where did the biggest change happen?", "What is NDVI?", "Show only vegetation loss"],
+            suggested_actions=["Where did the biggest change happen?", "How did vegetation change?", "Show urban development"],
         )
 
-
-
-    # 13. Smart Knowledge Engine for any question
+    # 12. Smart Knowledge Engine for any question
     knowledge_reply = ""
-    # Geographic entity checks
     if any(k in msg_lower for k in ["hyderabad", "telangana", "hitex", "cyberabad", "hitec"]):
-        knowledge_reply = (
-            f"🏙️ **Hyderabad / Telangana Geospatial Profile**\n\n"
-            f"• **Growth Corridors:** Hyderabad has experienced massive urban and IT corridor expansion along the Outer Ring Road (ORR), HITEC City, Gachibowli, and the Financial District.\n"
-            f"• **Remote Sensing Indicators:** SatQueryAI's NDBI index reliably traces new high-density commercial construction and infrastructure paving, while NDVI shifts capture suburban agricultural land conversion."
-        )
+        knowledge_reply = f"Hyderabad has seen major commercial and IT infrastructure growth along the Outer Ring Road and HITEC City, marked by high NDBI increase."
     elif any(k in msg_lower for k in ["gujarat", "ahmedabad", "gandhinagar", "surat"]):
-        knowledge_reply = (
-            f"🏭 **Gujarat Regional Dynamics**\n\n"
-            f"• **Landscape Characteristics:** Gujarat features major industrial corridors, coastal port development (Mundra, Kandla), and dynamic semi-arid agricultural cycles.\n"
-            f"• **Satellite Monitoring:** Sentinel-2 multispectral passes track seasonal canal irrigation, industrial park expansion, and coastal wetland boundary shifts."
-        )
+        knowledge_reply = f"Gujarat features extensive industrial corridor expansion and seasonal canal irrigation tracked via Sentinel-2 multispectral passes."
     elif any(k in msg_lower for k in ["tamil nadu", "chennai", "coimbatore"]):
-        knowledge_reply = (
-            f"🌿 **Tamil Nadu Landscape Assessment**\n\n"
-            f"• **Dynamics:** Rapid metropolitan expansion across the Chennai-Sriperumbudur industrial belt, alongside Kaveri delta agrarian cycles and Western Ghats forest conservation.\n"
-            f"• **Satellite Telemetry:** Tracks urban ground sealing and seasonal reservoir replenishment across the state."
-        )
+        knowledge_reply = f"Tamil Nadu exhibits metropolitan industrial expansion around Chennai alongside Kaveri delta seasonal agricultural cycles."
     elif any(k in msg_lower for k in ["kerala", "kochi", "cochin", "thiruvananthapuram"]):
-        knowledge_reply = (
-            f"🌴 **Kerala Agro-Ecological Corridor**\n\n"
-            f"• **Landscape:** Dense tropical plantation cover (rubber, coconut, tea), extensive coastal backwater estuaries, and high-density linear settlements.\n"
-            f"• **Remote Sensing Characteristics:** High year-round NDVI (+0.6 to +0.8) with localized shifts indicating coastal development, wetland preservation, and post-monsoon water level changes."
-        )
+        knowledge_reply = f"Kerala maintains dense tropical canopy with high NDVI (+0.6 to +0.8) and localized backwater hydrological shifts."
     elif any(k in msg_lower for k in ["sri lanka", "colombo"]):
-        knowledge_reply = (
-            f"🇱🇰 **Sri Lanka National Assessment**\n\n"
-            f"• **Dynamics:** Colombo port city development, central highlands tea/rainforest canopy, and Mahaweli irrigation agricultural cycles.\n"
-            f"• **Spectral Profile:** Tropical high-biomass reflectance with sharp coastal interface dynamics."
-        )
+        knowledge_reply = f"Sri Lanka shows rapid Colombo port development contrasted with tropical highland canopy reflectance."
     elif any(k in msg_lower for k in ["tokyo", "japan"]):
-        knowledge_reply = (
-            f"🗼 **Tokyo Metropolitan Assessment**\n\n"
-            f"• **Urban Structure:** World's most populous metropolitan area with ultra-high density built infrastructure (NDBI > 0.15).\n"
-            f"• **Remote Sensing:** Sentinel-2 captures waterfront reclamation in Tokyo Bay and seasonal park greening across Shinjuku Gyoen and Meiji Jingu."
-        )
+        knowledge_reply = f"Tokyo represents an ultra-dense urban landscape (NDBI > 0.15) with coastal reclamation along Tokyo Bay."
     elif any(k in msg_lower for k in ["london", "thames", "uk", "united kingdom"]):
-        knowledge_reply = (
-            f"🎡 **London / River Thames Corridor**\n\n"
-            f"• **Dynamics:** Urban infill redevelopment, River Thames tidal water levels, and extensive temperate parkland canopy.\n"
-            f"• **Spectral Profile:** Moderate NDVI (+0.4 to +0.6) in royal parks with dense structural reflectance across central London."
-        )
+        knowledge_reply = f"London reflects dense urban infrastructure along the River Thames corridor with moderate NDVI in parkland reserves."
     elif any(k in msg_lower for k in ["sydney", "australia"]):
-        knowledge_reply = (
-            f"🦘 **Sydney Coastal & Basin Assessment**\n\n"
-            f"• **Dynamics:** Western Sydney aerotropolis and suburban expansion contrasted with Blue Mountains eucalyptus forest reserves.\n"
-            f"• **Spectral Profile:** Dynamic seasonal drying, urban fringe conversion, and complex coastal harbor reflectance."
-        )
+        knowledge_reply = f"Sydney exhibits Western Sydney suburban expansion contrasted with coastal basin eucalyptus reserves."
     elif any(k in msg_lower for k in ["deforest", "forest", "tree", "logging", "clearing"]):
-        veg_loss_ha = sum(r.get("area_hectares", 0) for r in regions if "loss" in r.get("category", "").lower())
-        knowledge_reply = (
-            f"🌲 **Deforestation & Canopy Loss Assessment**\n\n"
-            f"• **Observation in {loc_name}:** SatQueryAI detected **{veg_loss_ha:.1f} hectares** of vegetation contraction.\n"
-            f"• **Detection Mechanism:** Sentinel-2 Near-Infrared Band 8 (842 nm) reflectance drops significantly when vegetative canopy is cleared or removed, producing a sharp negative ΔNDVI (≤ -0.15)."
-        )
+        veg_loss_ha = sum(r.get("area_hectares", 0) for r in regions if "loss" in r.get("category", "").lower() or r.get("delta_ndvi", 0) < -0.10)
+        knowledge_reply = f"Canopy loss was detected across **{veg_loss_ha:.1f} hectares** in {loc_name}, indicated by negative NDVI deltas."
     elif any(k in msg_lower for k in ["flood", "water", "lake", "river"]):
-        knowledge_reply = (
-            f"🌊 **Hydrological & Surface Water Dynamics**\n\n"
-            f"• **Observation in {loc_name}:** Monitored using NDWI (Normalized Difference Water Index).\n"
-            f"• **Physics:** Liquid water strongly absorbs near-infrared and shortwave-infrared light, yielding high positive NDWI values (+0.1 to +0.5) that clearly delineate water boundaries."
-        )
+        knowledge_reply = f"Water dynamics in {loc_name} are monitored using NDWI, where water absorbs near-infrared light and yields positive spectral indices."
     elif any(k in msg_lower for k in ["api", "key", "google", "gemini"]):
-        knowledge_reply = (
-            f"🤖 **SatQueryAI Intelligence Engine**\n\n"
-            f"• SatQueryAI is actively monitoring {loc_name} using Copernicus Sentinel-2 multi-spectral Earth observation data.\n"
-            f"• High-resolution multispectral analysis assesses changes in vegetation (NDVI), surface water (NDWI), and built infrastructure (NDBI)."
-        )
+        knowledge_reply = f"SatQueryAI is actively analyzing {loc_name} using calibrated Copernicus Sentinel-2 multispectral Earth observation data."
 
     if knowledge_reply:
         return ChatResponse(
             reply=knowledge_reply,
             analysis_id=analysis_id,
-            suggested_actions=["Where did the biggest change happen?", "What is NDVI and NDBI?", "When did it happen?"],
+            suggested_actions=["Where did the biggest change happen?", "How did vegetation change?", "How much urban development occurred?"],
             highlight_region_ids=None,
             filter_category=None
         )
 
-    # General comprehensive fallback with analysis context facts
+    # General concise fallback
     reply = (
-        f"**SatQueryAI Earth Intelligence Report for {loc_name}**\n\n"
-        f"Regarding *\"{user_message}\"*:\n\n"
-        f"• **Observation Window:** Between **{before_date}** and **{after_date}**, Copernicus Sentinel-2 Level-2A sensors monitored {analysis_context.get('total_aoi_hectares', 0):,.1f} ha.\n"
-        f"• **Detected Dynamics:** Surface changes were verified across **{analysis_context.get('total_changed_hectares', 0)} hectares** ({analysis_context.get('percent_aoi_changed', 0)}% of the AOI).\n"
-        f"• **Multi-spectral Telemetry:** Optical and infrared reflectance bands track healthy vegetation, surface moisture, and structural conversions across the monitoring window."
+        f"In **{loc_name}**, **{analysis_context.get('total_changed_hectares', 0)} hectares** of surface change were detected "
+        f"({analysis_context.get('percent_aoi_changed', 0)}% of the AOI). "
+        f"Please ask a specific question about vegetation, urban expansion, water bodies, or map hotspots."
     )
     return ChatResponse(
         reply=reply,
         analysis_id=analysis_id,
-        suggested_actions=["Where did the biggest change happen?", "What is NDVI and NDBI?", "When did it happen?"],
+        suggested_actions=["Where did the biggest change happen?", "How did vegetation change?", "How much urban development occurred?"],
         highlight_region_ids=None,
         filter_category=None
     )

@@ -1,17 +1,6 @@
-import React, { useState } from 'react';
-import { MapPin, Globe2, Compass, Sparkles, Building2, Droplets, Trees, Factory, ArrowRight, Satellite } from 'lucide-react';
-
-interface CityOption {
-  id: string;
-  name: string;
-  region: string;
-  country: string;
-  query: string;
-  category: 'urban' | 'water' | 'forest' | 'coastal';
-  tag: string;
-  focus: string;
-  years: string;
-}
+import React, { useState, useMemo } from 'react';
+import { MapPin, Globe2, Compass, Sparkles, Building2, Droplets, Trees, ArrowRight, Satellite, Search } from 'lucide-react';
+import { AVAILABLE_LOCATIONS, AvailableLocation } from '../lib/availableLocations';
 
 interface CitySelectorProps {
   activeLocationName?: string;
@@ -26,164 +15,68 @@ export const CitySelector: React.FC<CitySelectorProps> = ({
   isAnalyzing,
   onOpenRawSatellite,
 }) => {
-  const [filterTab, setFilterTab] = useState<'all' | 'india' | 'global' | 'environmental'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'states' | 'uts' | 'global'>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
-  const cities: CityOption[] = [
-    {
-      id: 'visakhapatnam',
-      name: 'Visakhapatnam',
-      region: 'Andhra Pradesh',
-      country: 'India',
-      query: 'Analyze Visakhapatnam between 2021 and 2026',
-      category: 'coastal',
-      tag: 'COASTAL & PORT',
-      focus: 'Harbour expansion, industrial corridors & coastal urban growth',
-      years: '2021–2026',
-    },
-    {
-      id: 'vijayawada',
-      name: 'Krishna River',
-      region: 'Vijayawada, Andhra Pradesh',
-      country: 'India',
-      query: 'Krishna River in Vijayawada between 2021 and 2026',
-      category: 'water',
-      tag: 'RIVER HYDROLOGY',
-      focus: 'Prakasam Barrage floodplain, sediment shifts & river channel dynamics',
-      years: '2021–2026',
-    },
-    {
-      id: 'hyderabad',
-      name: 'Hyderabad',
-      region: 'Telangana',
-      country: 'India',
-      query: 'Analyze Hyderabad, Telangana between 2021 and 2026',
-      category: 'urban',
-      tag: 'IT CORRIDOR',
-      focus: 'HITEC City, Financial District & Outer Ring Road rapid infrastructure',
-      years: '2021–2026',
-    },
-    {
-      id: 'bengaluru',
-      name: 'Bengaluru',
-      region: 'Karnataka',
-      country: 'India',
-      query: 'Analyze Bengaluru, Karnataka between 2021 and 2026',
-      category: 'urban',
-      tag: 'SILICON VALLEY',
-      focus: 'Tech parks, Bellandur lake catchment & peripheral urban sprawl',
-      years: '2021–2026',
-    },
-    {
-      id: 'gujarat',
-      name: 'Gujarat Coast',
-      region: 'Gujarat',
-      country: 'India',
-      query: 'Analyze Gujarat, India between 2021 and 2026',
-      category: 'coastal',
-      tag: 'COASTAL SALINITY',
-      focus: 'Gulf of Khambhat mudflats, port infrastructure & cropland shifts',
-      years: '2021–2026',
-    },
-    {
-      id: 'mumbai',
-      name: 'Mumbai Coast',
-      region: 'Maharashtra',
-      country: 'India',
-      query: 'Analyze Mumbai, Maharashtra between 2021 and 2026',
-      category: 'coastal',
-      tag: 'COASTAL RECLAMATION',
-      focus: 'Coastal Road project, harbour development & mangrove buffer zones',
-      years: '2021–2026',
-    },
-    {
-      id: 'delhi',
-      name: 'Delhi NCR',
-      region: 'National Capital Region',
-      country: 'India',
-      query: 'Analyze Delhi, India between 2021 and 2026',
-      category: 'urban',
-      tag: 'METROPOLITAN',
-      focus: 'Yamuna river corridor, expressways & peri-urban agricultural conversion',
-      years: '2021–2026',
-    },
-    {
-      id: 'dubai',
-      name: 'Dubai',
-      region: 'Emirate of Dubai',
-      country: 'United Arab Emirates',
-      query: 'Analyze Dubai, UAE between 2021 and 2026',
-      category: 'urban',
-      tag: 'DESERT METROPOLIS',
-      focus: 'Island developments, desert urban sprawl & mega-infrastructure',
-      years: '2021–2026',
-    },
-    {
-      id: 'tokyo',
-      name: 'Tokyo Bay',
-      region: 'Kanto',
-      country: 'Japan',
-      query: 'Analyze Tokyo, Japan between 2021 and 2026',
-      category: 'urban',
-      tag: 'MEGACITY',
-      focus: 'Tokyo Bay land reclamation, coastal logistics & urban density',
-      years: '2021–2026',
-    },
-    {
-      id: 'london',
-      name: 'London',
-      region: 'Greater London',
-      country: 'United Kingdom',
-      query: 'Analyze London, United Kingdom between 2021 and 2026',
-      category: 'water',
-      tag: 'THAMES CORRIDOR',
-      focus: 'Thames estuary development, brownfield transformation & green belts',
-      years: '2021–2026',
-    },
-    {
-      id: 'amazon',
-      name: 'Amazon Basin',
-      region: 'Para',
-      country: 'Brazil',
-      query: 'Analyze Para, Brazil between 2021 and 2026',
-      category: 'forest',
-      tag: 'RAINFOREST CANOPY',
-      focus: 'Tropical deforestation frontier, logging tracks & agricultural boundary',
-      years: '2021–2026',
-    },
-    {
-      id: 'sydney',
-      name: 'Sydney',
-      region: 'New South Wales',
-      country: 'Australia',
-      query: 'Analyze Sydney, Australia between 2021 and 2026',
-      category: 'coastal',
-      tag: 'HARBOUR METRO',
-      focus: 'Western Sydney Airport aerotropolis & coastal catchment areas',
-      years: '2021–2026',
-    },
-  ];
+  const filteredCities = useMemo(() => {
+    return AVAILABLE_LOCATIONS.filter((city) => {
+      if (filterTab === 'all' && !(city.isState || city.isUT)) return false;
+      if (filterTab === 'states' && !city.isState) return false;
+      if (filterTab === 'uts' && !city.isUT) return false;
+      if (filterTab === 'global' && (city.isState || city.isUT)) return false;
 
-  const filteredCities = cities.filter((city) => {
-    if (filterTab === 'india') return city.country === 'India';
-    if (filterTab === 'global') return city.country !== 'India';
-    if (filterTab === 'environmental') return city.category === 'water' || city.category === 'forest';
-    return true;
-  });
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        return (
+          city.name.toLowerCase().includes(q) ||
+          city.region.toLowerCase().includes(q) ||
+          city.country.toLowerCase().includes(q) ||
+          city.tag.toLowerCase().includes(q) ||
+          city.focus.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [filterTab, searchTerm]);
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
+  const getCategoryTheme = (city: AvailableLocation) => {
+    if (city.isState) {
+      return {
+        icon: <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />,
+        badge: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/50',
+      };
+    }
+    if (city.isUT) {
+      return {
+        icon: <Compass className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />,
+        badge: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-900/50',
+      };
+    }
+    switch (city.category) {
       case 'water':
-        return <Droplets className="w-3.5 h-3.5 text-[#4EA7FF]" />;
+        return {
+          icon: <Droplets className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />,
+          badge: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-900/50',
+        };
       case 'forest':
-        return <Trees className="w-3.5 h-3.5 text-[#35D6A1]" />;
+        return {
+          icon: <Trees className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />,
+          badge: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/50',
+        };
       case 'coastal':
-        return <Compass className="w-3.5 h-3.5 text-[#42E8D0]" />;
+        return {
+          icon: <Compass className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />,
+          badge: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-900/50',
+        };
       default:
-        return <Building2 className="w-3.5 h-3.5 text-[#FFB454]" />;
+        return {
+          icon: <Building2 className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />,
+          badge: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-900/50',
+        };
     }
   };
 
-  const isCurrentActive = (city: CityOption) => {
+  const isCurrentActive = (city: AvailableLocation) => {
     if (!activeLocationName) return false;
     const normActive = activeLocationName.toLowerCase();
     return normActive.includes(city.name.toLowerCase()) || normActive.includes(city.id);
@@ -194,62 +87,49 @@ export const CitySelector: React.FC<CitySelectorProps> = ({
       {/* Top Header & Filter Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div className="flex items-center space-x-2">
-          <Globe2 className="w-4 h-4 text-[#42E8D0]" />
-          <h3 className="text-sm font-bold text-white tracking-wide font-sans">
-            Choose an Earth Observation Location
+          <Globe2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-wide font-sans">
+            India-Wide Satellite Observation Registry
           </h3>
-          <span className="text-[11px] font-mono text-slate-500">
+          <span className="text-[11px] font-mono text-slate-500 dark:text-zinc-400">
             ({filteredCities.length} locations)
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search state, UT, city..."
+              className="pl-8 pr-3 py-1 bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 w-44 sm:w-56"
+            />
+          </div>
+
           {/* Filter Pills */}
-          <div className="flex items-center p-0.5 rounded-xl bg-[#06101A] border border-[#0C1C2A] text-xs font-mono">
-            <button
-              type="button"
-              onClick={() => setFilterTab('all')}
-              className={`px-3 py-1 rounded-lg transition-all ${
-                filterTab === 'all'
-                  ? 'bg-[#42E8D0]/15 text-[#42E8D0] font-bold border border-[#42E8D0]/30 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              All Cities
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterTab('india')}
-              className={`px-3 py-1 rounded-lg transition-all ${
-                filterTab === 'india'
-                  ? 'bg-[#42E8D0]/15 text-[#42E8D0] font-bold border border-[#42E8D0]/30 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              India Focus
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterTab('global')}
-              className={`px-3 py-1 rounded-lg transition-all ${
-                filterTab === 'global'
-                  ? 'bg-[#42E8D0]/15 text-[#42E8D0] font-bold border border-[#42E8D0]/30 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Global
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterTab('environmental')}
-              className={`px-3 py-1 rounded-lg transition-all ${
-                filterTab === 'environmental'
-                  ? 'bg-[#42E8D0]/15 text-[#42E8D0] font-bold border border-[#42E8D0]/30 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Nature & Water
-            </button>
+          <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs font-mono">
+            {[
+              { id: 'all', label: 'All India (36)' },
+              { id: 'states', label: 'States (28)' },
+              { id: 'uts', label: 'UTs (8)' },
+              { id: 'global', label: 'Global (6)' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilterTab(tab.id as any)}
+                className={`px-2.5 py-1 rounded-md transition-all whitespace-nowrap ${
+                  filterTab === tab.id
+                    ? 'bg-blue-600 text-white font-bold shadow-xs'
+                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           {/* Raw Satellite Studio Option Button */}
@@ -257,20 +137,21 @@ export const CitySelector: React.FC<CitySelectorProps> = ({
             <button
               type="button"
               onClick={onOpenRawSatellite}
-              className="px-3 py-1 rounded-xl bg-gradient-to-r from-orbit-cyan/20 to-emerald-500/20 hover:from-orbit-cyan/35 hover:to-emerald-500/35 border border-orbit-cyan/50 text-orbit-cyan hover:text-white text-xs font-mono font-bold transition-all shadow-[0_0_12px_rgba(0,240,255,0.2)] flex items-center space-x-1.5"
-              title="Compare raw optical satellite images side-by-side with timeline choice"
+              className="px-3 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-mono font-bold transition-all shadow-xs flex items-center space-x-1.5"
+              title="Compare raw optical satellite images side-by-side"
             >
-              <Satellite className="w-3.5 h-3.5 text-orbit-cyan animate-pulse" />
-              <span>RAW SATELLITE (SIDE-BY-SIDE)</span>
+              <Satellite className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>RAW SATELLITE</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Horizontal Scrollable City Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      {/* City Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
         {filteredCities.map((city) => {
           const active = isCurrentActive(city);
+          const theme = getCategoryTheme(city);
 
           return (
             <div
@@ -280,45 +161,45 @@ export const CitySelector: React.FC<CitySelectorProps> = ({
                   onSelectCity(city.query);
                 }
               }}
-              className={`group cursor-pointer p-3.5 rounded-xl border transition-all duration-200 flex flex-col justify-between ${
+              className={`group cursor-pointer p-4 rounded-xl border transition-all duration-200 flex flex-col justify-between ${
                 active
-                  ? 'bg-[#081724] border-[#42E8D0] shadow-[0_0_20px_rgba(66,232,208,0.25)] ring-1 ring-[#42E8D0]/30'
-                  : 'bg-[#06101A]/80 hover:bg-[#0C1C2A] border-[#0C1C2A] hover:border-[#42E8D0]/50'
+                  ? 'bg-blue-50/80 dark:bg-blue-950/30 border-blue-500 dark:border-blue-500 shadow-md ring-1 ring-blue-500/30'
+                  : 'bg-white dark:bg-zinc-900/80 hover:bg-slate-50 dark:hover:bg-zinc-800/80 border-slate-200 dark:border-zinc-800 hover:border-blue-300 dark:hover:border-zinc-700 shadow-xs'
               } ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <div>
-                {/* Card Tag & Category */}
-                <div className="flex items-center justify-between mb-2">
-                  <span className="inline-flex items-center space-x-1.5 text-[9.5px] font-mono font-bold tracking-wider text-slate-400 uppercase">
-                    {getCategoryIcon(city.category)}
+                {/* Card Tag & Category Badge */}
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className={`inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-md text-[9.5px] font-mono font-bold tracking-wider uppercase border ${theme.badge}`}>
+                    {theme.icon}
                     <span>{city.tag}</span>
                   </span>
                   {active && (
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-[#42E8D0]/20 text-[#42E8D0] border border-[#42E8D0]/40 flex items-center space-x-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#42E8D0] animate-ping" />
-                      <span>LOADED</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9.5px] font-mono font-bold bg-blue-600 text-white shadow-xs flex items-center space-x-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                      <span>ACTIVE</span>
                     </span>
                   )}
                 </div>
 
                 {/* City Title */}
-                <h4 className="text-sm font-bold text-white group-hover:text-[#42E8D0] transition-colors leading-tight mb-0.5 font-sans">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-tight mb-0.5 font-sans">
                   {city.name}
                 </h4>
-                <div className="text-[11px] text-slate-400 mb-2">
+                <div className="text-[11px] text-slate-500 dark:text-zinc-400 mb-2 font-medium">
                   {city.region}, {city.country}
                 </div>
 
                 {/* Focus description */}
-                <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed font-sans">
+                <p className="text-[11px] text-slate-600 dark:text-zinc-400 line-clamp-2 leading-relaxed font-sans">
                   {city.focus}
                 </p>
               </div>
 
               {/* Bottom Action Footer */}
-              <div className="mt-3 pt-2 border-t border-[#0C1C2A] flex items-center justify-between text-[10px] font-mono text-slate-500">
+              <div className="mt-3.5 pt-2.5 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between text-[10.5px] font-mono text-slate-500 dark:text-zinc-400">
                 <span>Pass: {city.years}</span>
-                <span className="text-[#42E8D0] font-semibold group-hover:translate-x-1 transition-transform flex items-center space-x-0.5">
+                <span className="text-blue-600 dark:text-blue-400 font-semibold group-hover:translate-x-1 transition-transform flex items-center space-x-0.5">
                   <span>Analyze</span>
                   <ArrowRight className="w-3 h-3" />
                 </span>

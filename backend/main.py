@@ -4,18 +4,30 @@ import logging
 import csv
 import io
 import os
+import re
 import numpy as np
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import base64
+import sys
 from PIL import Image
 
+# Ensure backend directory is in sys.path for local module imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from config import settings
+from services.upload_analysis_engine import (
+    analyze_single_satellite_image,
+    compare_two_satellite_images,
+    analyze_multiple_satellite_images,
+    chat_about_uploaded_analysis
+)
 from models.schemas import (
     AnalyzeRequest,
     AnalysisContext,
@@ -72,6 +84,7 @@ app.add_middleware(
 ANALYSIS_STORE: Dict[str, AnalysisContext] = {}
 YEAR_IMAGE_CACHE: Dict[str, Dict[str, Any]] = {}
 
+@app.get("/health")
 @app.get("/api/health")
 def health_check():
     has_key = bool(settings.GEMINI_API_KEY or settings.GOOGLE_API_KEY)
@@ -467,10 +480,14 @@ def export_csv(analysis_id: str):
     for t in ctx.transitions:
         writer.writerow([t.from_class, t.to_class, t.area_ha, t.description])
 
+    raw_name = ctx.location.name if ctx.location and ctx.location.name else "Location"
+    safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_name)
+    safe_name = re.sub(r'_+', '_', safe_name).strip('_') or "Analysis"
+
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=satqueryai_{ctx.location.name.lower().replace(' ', '_')}_stats.csv"}
+        headers={"Content-Disposition": f'attachment; filename="satqueryai_{safe_name.lower()}_stats.csv"'}
     )
 
 @app.post("/api/report/pdf")
@@ -480,15 +497,22 @@ def export_pdf_report(req: Dict[str, str]):
     """
     analysis_id = req.get("analysis_id", "")
     if analysis_id not in ANALYSIS_STORE:
-        raise HTTPException(status_code=404, detail="Analysis context not found.")
+        if ANALYSIS_STORE:
+            analysis_id = list(ANALYSIS_STORE.keys())[-1]
+        else:
+            raise HTTPException(status_code=404, detail="Analysis context not found. Please analyze an area first.")
 
     ctx = ANALYSIS_STORE[analysis_id]
     pdf_bytes = generate_pdf_report(ctx.dict())
 
+    raw_name = ctx.location.name if ctx.location and ctx.location.name else "Location"
+    safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_name)
+    safe_name = re.sub(r'_+', '_', safe_name).strip('_') or "Analysis"
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=SatQueryAI_Report_{ctx.location.name.replace(' ', '_')}.pdf"}
+        headers={"Content-Disposition": f'attachment; filename="SatQueryAI_Report_{safe_name}.pdf"'}
     )
 
 # ---------------------------------------------------------------------------
@@ -497,6 +521,7 @@ def export_pdf_report(req: Dict[str, str]):
 YEAR_IMAGE_CACHE: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/analysis/year-image", response_model=YearImageResponse)
+@app.post("/api/year-image", response_model=YearImageResponse)
 async def get_year_satellite_image(req: YearImageRequest):
     """
     Fetches real Sentinel-2 satellite imagery for a requested year (2020-2026) for the AOI.
@@ -574,6 +599,200 @@ async def get_year_satellite_image(req: YearImageRequest):
     }
     YEAR_IMAGE_CACHE[cache_key] = res
     return YearImageResponse(**res)
+
+
+# ---------------------------------------------------------------------------
+# Dedicated Upload Studio Endpoints (Single, Compare, Multiple Analysis)
+# ---------------------------------------------------------------------------
+class SingleUploadRequest(BaseModel):
+    image_data: str
+    filename: Optional[str] = None
+    custom_label: Optional[str] = None
+
+class CompareUploadRequest(BaseModel):
+    image1_data: str
+    image2_data: str
+    label1: Optional[str] = "Baseline Pass"
+    label2: Optional[str] = "Comparative Pass"
+    filename1: Optional[str] = None
+    filename2: Optional[str] = None
+
+class MultipleUploadRequest(BaseModel):
+    images: List[Dict[str, Any]]
+
+class UploadChatRequest(BaseModel):
+    analysis_data: Dict[str, Any]
+    message: str
+    history: Optional[List[Dict[str, str]]] = None
+
+@app.post("/api/upload/single")
+async def api_upload_single(req: SingleUploadRequest):
+    """
+    Upload Mode 1: Single Image Analysis
+    Decomposes satellite image into land cover percentages, area identification, and segmentation masks.
+    """
+    try:
+        res = await analyze_single_satellite_image(
+            image_data=req.image_data,
+            filename=req.filename,
+            custom_label=req.custom_label
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Single image upload error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Failed to analyze uploaded satellite image: {str(e)}")
+
+@app.post("/api/upload/compare")
+async def api_upload_compare(req: CompareUploadRequest):
+    """
+    Upload Mode 2: Two Image Comparison
+    Compares two uploaded satellite images and extracts differential changes, hotspots, and heatmap overlay.
+    """
+    try:
+        res = await compare_two_satellite_images(
+            image1_data=req.image1_data,
+            image2_data=req.image2_data,
+            label1=req.label1 or "Baseline Pass",
+            label2=req.label2 or "Comparative Pass",
+            filename1=req.filename1,
+            filename2=req.filename2
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Two-image comparison error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Failed to compare uploaded satellite images: {str(e)}")
+
+@app.post("/api/upload/multiple")
+async def api_upload_multiple(req: MultipleUploadRequest):
+    """
+    Upload Mode 3: Multiple Image Analysis (Timeline / Trajectory)
+    Analyzes a sequence of 2 to 10 uploaded satellite images for temporal trajectory and trends.
+    """
+    try:
+        res = await analyze_multiple_satellite_images(images_list=req.images)
+        return res
+    except Exception as e:
+        logger.error(f"Multiple-image upload analysis error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Failed to analyze multiple satellite images: {str(e)}")
+
+@app.post("/api/upload/chat")
+async def api_upload_chat(req: UploadChatRequest):
+    """
+    Conversational follow-up assistant specifically addressing the uploaded analysis.
+    Adheres strictly to the user's requirement: answers ONLY what was asked concisely.
+    """
+    try:
+        reply = await chat_about_uploaded_analysis(
+            analysis_data=req.analysis_data,
+            user_message=req.message,
+            chat_history=req.history or []
+        )
+        return {"reply": reply}
+    except Exception as e:
+        logger.error(f"Upload chat error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Failed to process chat query: {str(e)}")
+
+@app.get("/api/upload/samples")
+def api_upload_samples():
+    """
+    Provides curated satellite image sample presets for Single, Compare, and Multiple image testing.
+    """
+    public_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "thumbnails"))
+    
+    def _read_sample(fname: str) -> Optional[str]:
+        p = os.path.join(public_dir, fname)
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+                return f"data:image/jpeg;base64,{b64}"
+        return None
+
+    urban_b64 = _read_sample("category_urban.jpg")
+    veg_b64 = _read_sample("category_vegetation.jpg")
+    water_b64 = _read_sample("category_water.jpg")
+    deforest_b64 = _read_sample("category_deforestation.jpg")
+    regrowth_b64 = _read_sample("category_regrowth.jpg")
+    agri_b64 = _read_sample("category_agriculture.jpg")
+
+    return {
+        "single_samples": [
+            {
+                "id": "sample-urban",
+                "title": "Metropolitan Urban Development",
+                "description": "Dense urban grid, transit corridors, and industrial infrastructure.",
+                "image_data": urban_b64 or "",
+                "filename": "sample_urban_satellite.jpg",
+                "tag": "Urban Growth"
+            },
+            {
+                "id": "sample-water",
+                "title": "Coastal Marine & Water Bodies",
+                "description": "Hydrological coastline with river estuary and deep water absorption.",
+                "image_data": water_b64 or "",
+                "filename": "sample_water_satellite.jpg",
+                "tag": "Hydrology"
+            },
+            {
+                "id": "sample-veg",
+                "title": "Dense Forest Canopy & Agrarian Plots",
+                "description": "High photosynthetic biomass and agricultural field parcels.",
+                "image_data": veg_b64 or "",
+                "filename": "sample_vegetation_satellite.jpg",
+                "tag": "Vegetation"
+            }
+        ],
+        "compare_samples": [
+            {
+                "id": "sample-comp-urban",
+                "title": "Urban Expansion & Construction Front",
+                "description": "Compare baseline natural terrain against newly built commercial infrastructure.",
+                "label1": "2021 Baseline Pass",
+                "label2": "2026 Comparative Pass",
+                "image1_data": veg_b64 or "",
+                "image2_data": urban_b64 or "",
+                "filename1": "2021_baseline_pass.jpg",
+                "filename2": "2026_comparative_pass.jpg",
+                "tag": "Urban Growth"
+            },
+            {
+                "id": "sample-comp-deforest",
+                "title": "Canopy Contraction & Deforestation Front",
+                "description": "Observe clearing of dense forest canopy into bare development soil.",
+                "label1": "Pre-Clearing Canopy",
+                "label2": "Post-Disturbance Scene",
+                "image1_data": veg_b64 or "",
+                "image2_data": deforest_b64 or "",
+                "filename1": "pre_clearing_pass.jpg",
+                "filename2": "post_disturbance_pass.jpg",
+                "tag": "Deforestation"
+            },
+            {
+                "id": "sample-comp-regrowth",
+                "title": "Ecological Restoration & Vegetation Regrowth",
+                "description": "Trace progressive vegetative recovery across previously disturbed land.",
+                "label1": "Disturbed Baseline",
+                "label2": "Regrown Canopy",
+                "image1_data": deforest_b64 or "",
+                "image2_data": regrowth_b64 or "",
+                "filename1": "disturbed_baseline.jpg",
+                "filename2": "regrown_canopy.jpg",
+                "tag": "Regrowth"
+            }
+        ],
+        "multiple_samples": [
+            {
+                "id": "sample-multi-timeline",
+                "title": "4-Stage Environmental Evolution Timeline",
+                "description": "Sequential multi-pass observation showing agricultural initiation, canopy clearing, and final urbanization.",
+                "images": [
+                    {"label": "Stage 1: Natural Agrarian Plots", "filename": "stage_1_natural.jpg", "image_data": agri_b64 or ""},
+                    {"label": "Stage 2: Dense Forest Fringe", "filename": "stage_2_canopy.jpg", "image_data": veg_b64 or ""},
+                    {"label": "Stage 3: Ground Preparation & Clearing", "filename": "stage_3_clearing.jpg", "image_data": deforest_b64 or ""},
+                    {"label": "Stage 4: Completed Built Infrastructure", "filename": "stage_4_urban.jpg", "image_data": urban_b64 or ""}
+                ]
+            }
+        ]
+    }
 
 
 # ---------------------------------------------------------------------------
